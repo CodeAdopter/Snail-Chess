@@ -6,11 +6,13 @@ Snail Chess evaluates material only. No piece-square tables, no NNUE.
 
 ## Versions
 
-| Version | Rating | Speed |
-|---|---|---|
-| 1.0.0 | ~1340 | 30.5 Mnps |
+| Version | Rating | Speed | Size | Snail Rating |
+|---|---|---|---|---|
+| 1.0.0 | ~1340 | 30.5 Mnps | 298 KB | ~2011 |
 
-Rating is an estimate on the CCRL Blitz scale, from 206 games at 8+0.08 against Stash v8 to v16. Speed is the `nps` benchmark on one thread of an i9-14900KF.
+Snail Rating = Rating + 100 × log2(Mnps) + 100 × log2(1 MB / Size)
+
+Every doubling of speed adds 100, and every halving of the executable adds 100.
 
 ## License
 
