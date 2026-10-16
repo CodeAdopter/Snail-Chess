@@ -14,5 +14,7 @@ fn main()
         run_nps(passes, mask, threads, hash)
     elif command == "bench"
         run_bench(arg_count() > 2 ? parse_int(arg(2)) : DefaultBenchDepth)
+    elif command == "version" or command == "--version"
+        print_version()
     else
         uci_loop()

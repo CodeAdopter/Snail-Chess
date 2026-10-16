@@ -1,7 +1,6 @@
 use root
 use fen
-
-const DefaultBenchDepth = 9
+use config
 
 fn bench_position(i: int) -> str
     match i

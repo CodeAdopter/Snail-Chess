@@ -2,9 +2,6 @@ use threads
 use perft
 use bench
 
-const EngineName = "Snail Chess"
-const DefaultSearchDepth = 8
-const MaxHashMegabytes = 65536
 const MaxWords = 1024
 
 struct Uci
@@ -38,6 +35,9 @@ fn run_uci_search(uci: *Uci)
         write_move(threads.last_line[1])
     print()
 
+fn print_version()
+    print("{EngineName} {EngineVersion} by {EngineAuthor}")
+
 fn split_words(text: str, words: *str, capacity: int) -> int
     var count = 0
     var at: i64 = 0
@@ -57,6 +57,7 @@ fn uci_loop()
     uci.board = new Board
     uci.board.load_fen(StartFen)
     uci.threads = SearchThreads.create(DefaultHashMegabytes)
+    uci.threads.set_threads(DefaultThreads)
     var words: [MaxWords]str
 
     loop
@@ -67,10 +68,10 @@ fn uci_loop()
         let command = words[0]
 
         if command == "uci"
-            print("id name {EngineName}")
-            print("id author Angelo Wolff")
+            print("id name {EngineName} {EngineVersion}")
+            print("id author {EngineAuthor}")
             print("option name Hash type spin default {DefaultHashMegabytes} min 0 max {MaxHashMegabytes}")
-            print("option name Threads type spin default 1 min 1 max {MaxThreads}")
+            print("option name Threads type spin default {DefaultThreads} min 1 max {MaxThreads}")
             print("uciok")
         elif command == "isready"
             print("readyok")
@@ -92,6 +93,8 @@ fn uci_loop()
         elif command == "bench"
             uci.stop_search()
             run_bench(count > 1 ? parse_int(words[1]) : DefaultBenchDepth)
+        elif command == "version"
+            print_version()
         elif command == "quit"
             break
     uci.stop_search()
@@ -186,8 +189,8 @@ fn parse_go(uci: *Uci, words: *str, count: int) -> bool
         let white = uci.board.side == White
         let remaining = white ? white_time : black_time
         let increment = white ? white_increment : black_increment
-        let budget = remaining / 20 + increment / 2
-        limits.move_time_ms = clamp(budget, 1, max(1, remaining - 30))
+        let budget = remaining / ExpectedMovesLeft + increment / IncrementDivisor
+        limits.move_time_ms = clamp(budget, 1, max(1, remaining - MoveOverheadMs))
     else
         limits.max_depth = DefaultSearchDepth
     uci.limits = limits

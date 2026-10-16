@@ -1,6 +1,5 @@
 use root
-
-const MaxThreads = 256
+use config
 
 fn run_helper(search: *Search)
     search.find_best_move(search.root, SearchLimits(until_stopped: true))

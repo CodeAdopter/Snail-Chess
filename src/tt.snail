@@ -1,6 +1,5 @@
 use primitives
 
-const DefaultHashMegabytes = 64
 const BucketSize = 4
 
 enum Bound: u8
