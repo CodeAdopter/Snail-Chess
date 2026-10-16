@@ -1,0 +1,82 @@
+use primitives
+
+const DefaultHashMegabytes = 64
+const BucketSize = 4
+
+enum Bound: u8
+    NoBound = 0
+    Upper = 1
+    Lower = 2
+    Exact = 3
+
+packed TableEntry: u64
+    key: u16
+    move: Move
+    score: i16
+    depth: u8
+    bound: Bound : 2
+    age: u8 : 6
+
+const NoEntry = 0 as TableEntry
+
+struct TranspositionTable
+    entries: *u64
+    bucket_mask: u64
+    generation: u64
+
+    static fn create(megabytes: int) -> *TranspositionTable
+        let table = new TranspositionTable
+        table.resize(megabytes)
+        return table
+
+    fn resize(megabytes: int)
+        if entries != null: free(entries)
+        let bytes = max(megabytes, 1) as u64 << 20
+        var buckets: u64 = 1
+        while buckets * 2 * BucketSize * 8 <= bytes
+            buckets *= 2
+        entries = alloc[u64](buckets * BucketSize)
+        bucket_mask = buckets - 1
+
+    fn clear()
+        zero(entries, (bucket_mask + 1) * BucketSize)
+
+    fn new_search()
+        generation = (generation + 1) & 63
+
+    @inline
+    fn bucket(hash: u64) -> *u64
+        return entries + (hash & bucket_mask) * BucketSize
+
+    @inline
+    fn preload(hash: u64)
+        prefetch(bucket(hash))
+
+    @inline
+    fn probe(hash: u64) -> TableEntry
+        let slots = bucket(hash)
+        let key = hash >> 48
+        for i in 0..BucketSize
+            let data = slots[i]
+            if data & 0xFFFF == key and data != 0: return data as TableEntry
+        return NoEntry
+
+    @nosave
+    fn store(hash: u64, move: Move, score: int, depth: int, bound: Bound)
+        let slots = bucket(hash)
+        let key = hash >> 48
+        var slot = slots
+        var kept_move = move
+        var worst = int.max
+        for i in 0..BucketSize
+            let data = slots[i]
+            if data == 0 or data & 0xFFFF == key
+                slot = slots + i
+                if move == NoMove and data != 0: kept_move = (data as TableEntry).move
+                break
+            let age = (generation - (data >> 58)) & 63
+            let value = (data >> 48 & 0xFF) as int - 8 * age as int
+            if value < worst
+                worst = value
+                slot = slots + i
+        *slot = TableEntry(key, kept_move, score, depth, bound, generation) as u64

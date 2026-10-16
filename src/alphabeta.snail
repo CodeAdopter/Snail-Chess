@@ -1,0 +1,145 @@
+use stages
+
+extend Search
+    @inline
+    fn prefetch_child[us: Side](board: *Board, move: Move, depth: int, hash: u64)
+        if hash != 0 and depth - 1 >= TableMinimumDepth: table.preload(board.key_after(move, hash))
+
+    @inline
+    fn search_child[us: Side](board: *Board, move: Move, depth: int, alpha: int, beta: int, ply: int, hash: u64) -> int
+        var child_hash: u64 = 0
+        if hash != 0 and depth - 1 >= TableMinimumDepth
+            child_hash = board.key_after(move, hash)
+            table.preload(child_hash)
+        board.make(move)
+        let score = -alpha_beta[us.other](board, depth - 1, -beta, -alpha, ply + 1, child_hash)
+        board.unmake(move)
+        return score
+
+    @nosave
+    fn alpha_beta[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64) -> int
+        if stop_requested: return 0
+        if node_count & 8191 == 0 and reached_limit()
+            stop_requested = true
+            return 0
+        if depth <= 0: return quiescence(board, alpha, beta, ply)
+
+        node_count += 1
+        main_node_count += 1
+        pv_length[ply] = ply
+
+        var table_move = NoMove
+        if hash != 0
+            let entry = table.probe(hash)
+            if entry != NoEntry
+                table_move = entry.move
+                if ply > 0 and entry.depth >= depth
+                    let table_score = score_from_table(entry.score, ply)
+                    if entry.bound & Lower and table_score >= beta: return table_score
+                    if entry.bound & Upper and table_score <= alpha: return table_score
+                if table_move != NoMove: prefetch_child(board, table_move, depth, hash)
+
+        let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move)
+        if stopped: return 0
+
+        if hash != 0
+            let bound = result >= beta ? Lower : result > alpha ? Exact : Upper
+            table.store(hash, best_move, score_to_table(result, ply), depth, bound)
+        return result
+
+    @inline
+    fn search_moves[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64, table_move: Move) -> (int, Move, bool)
+        let stand_pat = evaluate(board)
+        var best_score = -Infinity
+        var best_move = NoMove
+        var result = 0
+        var resume_at = -1
+        var searched_first = NoMove
+
+        if ply > 0
+            if table_move != NoMove and table_move.code < FirstTactical and is_legal_quiet(board, table_move)
+                searched_first = table_move
+                let score = search_child(board, table_move, depth, alpha, beta, ply, hash)
+                if stop_requested: return 0, best_move, true
+                best_score = score
+                best_move = table_move
+                if score > alpha
+                    alpha = score
+                    update_pv(ply, table_move, false)
+                if alpha >= beta
+                    remember_killer(ply, table_move)
+                    return best_score, best_move, false
+
+            let finished = depth == 1 ? frontier_tactical_first(board, stand_pat, ref alpha, beta, ply, ref best_score, ref resume_at, ref result) : tactical_first(board, depth, ref alpha, beta, ply, hash, table_move, ref best_score, ref best_move, ref resume_at, ref result)
+            if finished: return result, best_move, stop_requested
+
+        var killers_searched = 0
+        if resume_at >= 0 and killers_first(board, depth, stand_pat, ref alpha, beta, ply, hash, searched_first, ref best_score, ref best_move, ref killers_searched, ref result)
+            return result, best_move, stop_requested
+
+        let moves = move_buffer(ply)
+        let move_count = legal(board, moves)
+        if move_count == 0: return (board.in_check() ? -MateValue + ply : 0), best_move, false
+
+        var fixed = 0
+        if ply == 0
+            fixed = 1
+            if pv_move != NoMove
+                let i = find_move(moves, 1, move_count, pv_move.code)
+                if i >= 0: swap(moves, 0, i)
+        elif resume_at < 0 and table_move.code >= FirstTactical
+            let i = find_move(moves, 0, move_count, table_move.code)
+            if i >= 0
+                swap(moves, 0, i)
+                fixed = 1
+
+        let tactical_end = fixed + order_tactical_moves(board, moves + fixed, move_count - fixed)
+        if ply == 0: sort_by_centrality(board, moves + tactical_end, move_count - tactical_end)
+
+        let loop_start = resume_at < 0 ? 0 : resume_at + killers_searched
+        var killers_at = tactical_end
+        if loop_start > killers_at
+            promote_killers(moves, move_count, killers_at, ply)
+            killers_at = -1
+
+        let prefetching = hash != 0 and depth - 1 >= TableMinimumDepth
+
+        for i in loop_start..move_count
+            if i == killers_at
+                promote_killers(moves, move_count, killers_at, ply)
+                killers_at = -1
+
+            let move = moves[i]
+            if move == searched_first: continue
+
+            if prefetching and i + 1 < move_count
+                if i + 1 == killers_at
+                    promote_killers(moves, move_count, killers_at, ply)
+                    killers_at = -1
+                table.preload(board.key_after(moves[i + 1], hash))
+
+            var score = 0
+            var skipped = false
+            if depth == 1: (skipped, score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
+            if not skipped
+                if depth > 1
+                    score = search_child(board, move, depth, alpha, beta, ply, hash)
+                else
+                    board.make(move)
+                    score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+                    board.unmake(move)
+                if stop_requested: return 0, best_move, true
+
+            if score > best_score
+                best_score = score
+                best_move = move
+                if ply == 0: pv_move = move
+            if score > alpha
+                alpha = score
+                update_pv(ply, move, depth == 1)
+            if alpha < beta: continue
+
+            if move.code < FirstTactical: remember_killer(ply, move)
+            break
+
+        return best_score, best_move, false

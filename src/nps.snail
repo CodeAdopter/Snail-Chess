@@ -1,0 +1,98 @@
+use threads
+use fen
+
+const NpsPositionCount = 24
+
+fn nps_position(i: int) -> (str, int)
+    match i
+        0: return "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", 9
+        1: return "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -", 8
+        2: return "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 8
+        3: return "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq -", 9
+        4: return "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -", 10
+        5: return "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 8
+        6: return "4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19", 8
+        7: return "rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14", 8
+        8: return "r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14", 8
+        9: return "r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15", 7
+        10: return "r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13", 8
+        11: return "4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17", 8
+        12: return "2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11", 8
+        13: return "3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22", 8
+        14: return "r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18", 8
+        15: return "4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22", 8
+        16: return "3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26", 9
+        17: return "6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/8 b - - 0 1", 12
+        18: return "3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1", 12
+        19: return "8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1", 9
+        20: return "6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1", 9
+        21: return "1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1", 8
+        22: return "r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16", 7
+    return "4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1", 8
+
+fn mix(hash: u64, value: u64) -> u64
+    var h = hash
+    for i in 0..8
+        h ^= value >> 8 * i & 0xFF
+        h *= 1099511628211
+    return h
+
+fn run_nps(passes: int, mask: u64, thread_count: int, hash_megabytes: int)
+    pin(mask)
+    let threads = SearchThreads.create(hash_megabytes)
+    threads.set_threads(thread_count)
+    threads.suppress_output = true
+    let board = new Board
+
+    for i in 0..NpsPositionCount
+        let (fen, _) = nps_position(i)
+        board.load_fen(fen)
+        threads.find_best_move(board, SearchLimits(max_depth: 4))
+
+    var nodes: [NpsPositionCount]i64
+    var best_ms: [NpsPositionCount]f64
+    var best_moves: [NpsPositionCount]Move
+    var scores: [NpsPositionCount]int
+    for i in 0..NpsPositionCount
+        best_ms[i] = 1.0e300
+    var deterministic = true
+
+    for pass in 0..passes
+        for i in 0..NpsPositionCount
+            let (fen, depth) = nps_position(i)
+            board.load_fen(fen)
+            threads.clear_hash()
+            let start = now_ns()
+            let best = threads.find_best_move(board, SearchLimits(max_depth: depth))
+            let ms = (now_ns() - start) as f64 / 1.0e6
+            if pass > 0 and (threads.last_node_count != nodes[i] or best != best_moves[i])
+                deterministic = false
+                write("pass {pass} position {i + 1}: {threads.last_node_count} nodes, best ")
+                write_move(best)
+                write(" (first pass {nodes[i]}, ")
+                write_move(best_moves[i])
+                print(")")
+            if ms >= best_ms[i]: continue
+            nodes[i] = threads.last_node_count
+            best_moves[i] = best
+            scores[i] = threads.last_score
+            best_ms[i] = ms
+
+    print("nps suite: {NpsPositionCount} positions, best of {passes} pass(es), {threads.thread_count()} thread(s), hash {hash_megabytes} MB")
+    print("    #  depth          nodes        ms     Mnps  bm      score")
+    var total_nodes: i64 = 0
+    var total_ms = 0.0
+    var signature: u64 = 14695981039346656037
+    for i in 0..NpsPositionCount
+        let (_, depth) = nps_position(i)
+        total_nodes += nodes[i]
+        total_ms += best_ms[i]
+        signature = mix(signature, nodes[i] as u64)
+        signature = mix(signature, best_moves[i].code)
+        signature = mix(signature, scores[i] as u32 as u64)
+        write("  {i + 1:3}  d{depth:-4} {nodes[i]:14}  {best_ms[i]:8.1}  {nodes[i] / best_ms[i] / 1000.0:7.2}  ")
+        write_move(best_moves[i])
+        print("  {scores[i]:6}")
+    if threads.thread_count() > 1: print("note: several threads, so nodes and signature vary from run to run")
+    elif not deterministic: print("WARNING: node counts or best moves differed between passes")
+    print("nps total: nodes={total_nodes} ms={total_ms:.1} mnps={total_nodes / total_ms / 1000.0:.3} sig={signature:016X}")

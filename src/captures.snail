@@ -1,0 +1,47 @@
+use board
+use sink
+use material
+
+fn pseudo_legal_captures[us: Side](board: *Board, buffer: *Move, minimum_gain: int) -> int
+    const them = us.other
+    var sink = Sink(buffer)
+
+    let theirs = board.occupancy(them)
+    let occupied = board.occupancy(us) | theirs
+    let any_victim = theirs & ~board.pieces(them, King)
+    let victims = minimum_gain < PawnValue ? any_victim : victims_worth_more_than(board, minimum_gain)
+
+    let pawns = board.pieces(us, Pawn)
+    let west = capture_west(pawns)
+    let east = capture_east(pawns)
+    let promotion = promotion_rank()
+
+    sink.add_pawn_moves[WriteAll](west & victims & ~promotion, west_step(), Capture)
+    sink.add_pawn_moves[WriteAll](east & victims & ~promotion, east_step(), Capture)
+    sink.add_pawn_moves[WriteAll](west & any_victim & promotion, west_step(), CapturePromoteQueen)
+    sink.add_pawn_moves[WriteAll](east & any_victim & promotion, east_step(), CapturePromoteQueen)
+    sink.add_pawn_moves[WriteAll](push(pawns) & ~occupied & promotion, push_step(), PromoteQueen)
+
+    let en_passant = board.en_passant()
+    if en_passant != Square.none and minimum_gain < PawnValue
+        if en_passant in west: sink.add_move[WriteAll](en_passant - west_step(), en_passant, EnPassant)
+        if en_passant in east: sink.add_move[WriteAll](en_passant - east_step(), en_passant, EnPassant)
+
+    for from in board.pieces(us, Knight)
+        sink.add_piece_moves[WriteAll](from, knight_attacks(from) & victims, Capture)
+    for from in board.pieces(us, Bishop)
+        sink.add_piece_moves[WriteAll](from, bishop_attacks(from, occupied) & victims, Capture)
+    for from in board.pieces(us, Rook)
+        sink.add_piece_moves[WriteAll](from, rook_attacks(from, occupied) & victims, Capture)
+    for from in board.pieces(us, Queen)
+        sink.add_piece_moves[WriteAll](from, queen_attacks(from, occupied) & victims, Capture)
+
+    let king = board.king_square(us)
+    sink.add_piece_moves[WriteAll](king, king_attacks(king) & victims, Capture)
+    return sink.written
+
+fn victims_worth_more_than[us: Side](board: *Board, minimum_gain: int) -> Bitboard
+    var victims: Bitboard = 0
+    for kind in 2..6
+        if KindValue[kind] > minimum_gain: victims |= board.pieces(us.other, kind as Kind)
+    return victims

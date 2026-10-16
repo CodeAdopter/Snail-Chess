@@ -1,0 +1,72 @@
+use attacks
+use pawns
+
+const HistoryCapacity = 2048
+
+struct PlyState
+    key: u64
+    en_passant: Square
+    castling: u8
+    clock: u16
+    captured: Piece
+
+struct Board
+    bb: [PieceLimit]Bitboard
+    squares: [64]Piece
+    side: Side
+    ply: int
+    key: u64
+    material: int
+    history: [HistoryCapacity]PlyState
+
+    @inline
+    fn state() -> *PlyState
+        return &history[ply]
+
+    @inline
+    fn pieces(side: Side, kind: Kind) -> Bitboard
+        return bb[kind << 1 | side]
+
+    @inline
+    fn occupancy(side: Side) -> Bitboard
+        return bb[side]
+
+    @inline
+    fn occupied() -> Bitboard
+        return bb[White] | bb[Black]
+
+    @inline
+    fn bishops_queens(side: Side) -> Bitboard
+        return pieces(side, Bishop) | pieces(side, Queen)
+
+    @inline
+    fn rooks_queens(side: Side) -> Bitboard
+        return pieces(side, Rook) | pieces(side, Queen)
+
+    @inline
+    fn king_square(side: Side) -> Square
+        return pieces(side, King).first
+
+    @inline
+    fn en_passant() -> Square
+        return history[ply].en_passant
+
+    @inline
+    fn castling() -> u8
+        return history[ply].castling
+
+    @inline
+    fn in_check[us: Side]() -> bool
+        return is_attacked(king_square(us), occupied())
+
+    @inline
+    fn is_attacked[us: Side](sq: Square, occupied: Bitboard) -> bool
+        const them = us.other
+        let target = sq.bit
+        let leapers = (capture_west(target) | capture_east(target)) & pieces(them, Pawn) | knight_attacks(sq) & pieces(them, Knight) | king_attacks(sq) & pieces(them, King)
+        if leapers: return true
+
+        let diagonal = bishops_queens(them)
+        if bishop_reach(sq) & diagonal and bishop_attacks(sq, occupied) & diagonal: return true
+        let straight = rooks_queens(them)
+        return rook_reach(sq) & straight and rook_attacks(sq, occupied) & straight

@@ -1,0 +1,70 @@
+use alphabeta
+use info
+
+const SkipSize = [1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4]
+const SkipPhase = [0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 7]
+
+fn skips_depth(helper: int, depth: int) -> bool
+    if helper == 0 or depth == 1: return false
+    let i = (helper - 1) % 20
+    return (depth + SkipPhase[i]) / SkipSize[i] % 2 != 0
+
+extend Search
+    fn find_best_move(board: *Board, limits: SearchLimits) -> Move
+        node_count = 0
+        main_node_count = 0
+        until_stopped = limits.until_stopped
+        start_ms = now_ms()
+        time_limit_ms = limits.move_time_ms > 0 ? limits.move_time_ms : i64.max
+        node_limit = limits.max_nodes
+        zero(&killers)
+
+        var root_moves: [MaxMoves]Move
+        let root_count = legal_moves(board, &root_moves[0])
+        pv_move = root_count > 0 ? most_central_move(board, &root_moves[0], root_count) : NoMove
+        var line: [MaximumPly]Move
+        var line_length = 0
+        if root_count > 0
+            line[0] = pv_move
+            line_length = 1
+        let max_depth = root_count == 0 ? 0 : limits.max_depth > 0 ? limits.max_depth : MaximumPly - 1
+        var final_score = 0
+        var completed = 0
+        let root_hash = table != null ? board.key : 0
+
+        for depth in 1..max_depth + 1
+            if skips_depth(helper_index, depth): continue
+            let hash = depth >= TableMinimumDepth ? root_hash : 0
+            let score = alpha_beta[board.side](board, depth, -Infinity, Infinity, 0, hash)
+            if stop_requested and depth > 1: break
+
+            final_score = score
+            completed = depth
+            line_length = pv_length[0]
+            copy(&line[0], &pv_table[0], line_length)
+
+            if group != null: group.iteration_completed(depth, score, &line[0], line_length)
+            elif not suppress_output: print_info(depth, score, node_count, elapsed_ms(), &line[0], line_length)
+
+            if not until_stopped and abs(score) >= MateBound: break
+            if reached_limit(): break
+
+        while until_stopped and not stop_requested
+            sleep_ms(1)
+
+        stop_requested = false
+        last_node_count = node_count
+        last_quiescence_nodes = node_count - main_node_count
+        last_elapsed_ms = elapsed_ms()
+        last_score = final_score
+        last_depth = completed
+
+        if line_length > 0 and line[0] == pv_move
+            copy(&last_line[0], &line[0], line_length)
+            last_line_length = line_length
+        elif root_count > 0
+            last_line[0] = pv_move
+            last_line_length = 1
+        else
+            last_line_length = 0
+        return pv_move

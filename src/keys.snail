@@ -1,0 +1,29 @@
+use primitives
+use random
+
+var key_black_to_move: u64
+var key_piece_square: [16 * 64]u64
+var key_castling: [16]u64
+var key_en_passant: [65]u64
+
+@inline
+fn piece_key(piece: Piece, sq: Square) -> u64
+    return key_piece_square[piece << 6 | sq]
+
+init
+    var random = SplitMix64(0x005A_6F6F_6D69_6573)
+    key_black_to_move = random.next()
+    for piece in 2..PieceLimit
+        for sq in 0..64
+            key_piece_square[piece << 6 | sq] = random.next()
+    var right_keys: [4]u64
+    for r in 0..4
+        right_keys[r] = random.next()
+    for rights in 0..16
+        for r in 0..4
+            if rights & 1 << r: key_castling[rights] ^= right_keys[r]
+    var file_keys: [8]u64
+    for f in 0..8
+        file_keys[f] = random.next()
+    for sq in 0..64
+        key_en_passant[sq] = file_keys[sq & 7]

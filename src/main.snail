@@ -1,0 +1,18 @@
+use uci
+use nps
+
+fn main()
+    let command = arg(1)
+    if command == "perft"
+        let runs = arg_count() > 3 ? parse_int(arg(3)) : 3
+        perft_suite(new Board, runs, arg(2) == "counted")
+    elif command == "nps"
+        let passes = arg_count() > 2 ? parse_int(arg(2)) : 1
+        let mask = arg_count() > 3 ? parse_hex(arg(3)) : 0
+        let threads = arg_count() > 4 ? parse_int(arg(4)) : 1
+        let hash = arg_count() > 5 ? parse_int(arg(5)) : DefaultHashMegabytes
+        run_nps(passes, mask, threads, hash)
+    elif command == "bench"
+        run_bench(arg_count() > 2 ? parse_int(arg(2)) : DefaultBenchDepth)
+    else
+        uci_loop()

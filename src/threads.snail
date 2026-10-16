@@ -1,0 +1,135 @@
+use root
+
+const MaxThreads = 256
+
+fn run_helper(search: *Search)
+    search.find_best_move(search.root, SearchLimits(until_stopped: true))
+
+struct SearchThreads
+    main: *Search
+    helpers: [MaxThreads]*Search
+    helper_threads: [MaxThreads]u64
+    helper_count: int
+    table: *TranspositionTable
+    report_lock: int
+    suppress_output: bool
+
+    start_ms: f64
+    depth_limit: int
+    until_stopped: bool
+    deepest_depth: int
+    deepest_score: int
+    deepest_line: [MaximumPly]Move
+    deepest_length: int
+
+    last_node_count: i64
+    last_elapsed_ms: i64
+    last_score: int
+    last_depth: int
+    last_line: [MaximumPly]Move
+    last_line_length: int
+
+    static fn create(hash_megabytes: int) -> *SearchThreads
+        let threads = new SearchThreads
+        threads.main = new Search
+        threads.main.group = threads
+        threads.set_hash(hash_megabytes)
+        return threads
+
+    fn thread_count() -> int
+        return helper_count + 1
+
+    fn set_hash(megabytes: int)
+        if table != null
+            free(table.entries)
+            free(table)
+            table = null
+        if megabytes > 0: table = TranspositionTable.create(megabytes)
+        main.table = table
+        for i in 0..helper_count
+            helpers[i].table = table
+
+    fn set_threads(count: int)
+        let wanted = clamp(count, 1, MaxThreads) - 1
+        while helper_count < wanted
+            let helper = new Search
+            helper.suppress_output = true
+            helper.helper_index = helper_count + 1
+            helper.table = table
+            helper.group = self
+            helper.root = new Board
+            helpers[helper_count] = helper
+            helper_count += 1
+        while helper_count > wanted
+            helper_count -= 1
+            free(helpers[helper_count].root)
+            free(helpers[helper_count])
+
+    fn clear_hash()
+        if table != null: table.clear()
+
+    fn stop()
+        main.stop()
+        for i in 0..helper_count
+            helpers[i].stop()
+
+    fn reset_stop()
+        main.stop_requested = false
+
+    fn total_nodes() -> i64
+        var nodes = atomic_load(&main.node_count)
+        for i in 0..helper_count
+            nodes += atomic_load(&helpers[i].node_count)
+        return nodes
+
+    fn find_best_move(board: *Board, limits: SearchLimits) -> Move
+        if table != null: table.new_search()
+        depth_limit = limits.max_depth > 0 ? limits.max_depth : int.max
+        until_stopped = limits.until_stopped
+        deepest_depth = 0
+        deepest_score = 0
+        deepest_length = 0
+        start_ms = now_ms()
+
+        for i in 0..helper_count
+            let helper = helpers[i]
+            *helper.root = *board
+            helper.stop_requested = false
+            helper.node_count = 0
+            helper_threads[i] = spawn(run_helper, helper)
+
+        let main_move = main.find_best_move(board, limits)
+
+        for i in 0..helper_count
+            helpers[i].stop()
+        for i in 0..helper_count
+            join(helper_threads[i])
+
+        last_node_count = total_nodes()
+        last_elapsed_ms = (now_ms() - start_ms) as i64
+        if deepest_length == 0
+            last_score = main.last_score
+            last_depth = main.last_depth
+            last_line_length = main.last_line_length
+            copy(&last_line[0], &main.last_line[0], last_line_length)
+            return main_move
+
+        last_score = deepest_score
+        last_depth = deepest_depth
+        last_line_length = deepest_length
+        copy(&last_line[0], &deepest_line[0], deepest_length)
+        return deepest_line[0]
+
+    fn iteration_completed(depth: int, score: int, line: *Move, length: int)
+        lock(&report_lock)
+        if depth > deepest_depth
+            deepest_depth = depth
+            deepest_score = score
+            deepest_length = length
+            copy(&deepest_line[0], line, length)
+
+            if not suppress_output: print_info(depth, score, total_nodes(), (now_ms() - start_ms) as i64, line, length)
+
+            let mate_found = abs(score) >= MateBound and not until_stopped
+            if depth >= depth_limit or mate_found: stop()
+        unlock(&report_lock)

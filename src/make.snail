@@ -1,0 +1,174 @@
+use board
+use castling
+use keys
+use material
+
+extend Board
+    @inline
+    fn make[us: Side](move: Move)
+        let from = move.from
+        let to = move.to
+        let kind = move.kind
+        let next = enter_ply(from, to)
+        if kind == Quiet
+            relocate(from, to)
+        elif kind == Capture
+            let victim = squares[to]
+            next.captured = victim
+            clear_bits(victim, to.bit)
+            relocate(from, to)
+        else
+            make_special(move, next)
+
+    @inline
+    fn unmake[us: Side](move: Move)
+        let from = move.from
+        let to = move.to
+        let kind = move.kind
+        if kind == Quiet
+            relocate(to, from)
+        elif kind == Capture
+            relocate(to, from)
+            put(history[ply].captured, to)
+        else
+            unmake_special(move)
+        ply -= 1
+        side = us
+
+    fn play(move: Move)
+        apply[side](move)
+
+    fn apply[us: Side](move: Move)
+        let next_key = key_after(move, key)
+        let resets_clock = move.is_capture or squares[move.from].kind == Pawn
+        let clock = resets_clock ? 0 : history[ply].clock + 1
+        make(move)
+        history[ply].key = next_key
+        history[ply].clock = min(clock, 65535)
+        key = next_key
+
+    fn discard_history()
+        history[0] = history[ply]
+        ply = 0
+
+    @inline
+    fn enter_ply[us: Side](from: Square, to: Square) -> *PlyState
+        let current = &history[ply]
+        let next = &history[ply + 1]
+        next.castling = current.castling & kept_after(from, to)
+        next.en_passant = Square.none
+        next.captured = NoPiece
+        ply += 1
+        side = us.other
+        return next
+
+    @noinline
+    fn make_special[us: Side](move: Move, next: *PlyState)
+        let from = move.from
+        let to = move.to
+        const back = back_rank()
+        match move.kind
+            DoublePush
+                relocate(from, to)
+                next.en_passant = en_passant_after_double_push(from, to)
+            CastleKingside
+                relocate(e1 + back, g1 + back)
+                relocate(h1 + back, f1 + back)
+            CastleQueenside
+                relocate(e1 + back, c1 + back)
+                relocate(a1 + back, d1 + back)
+            EnPassant
+                let victim = to - push_step()
+                relocate(from, to)
+                clear_bits(Piece.of(us.other, Pawn), victim.bit)
+                squares[victim] = NoPiece
+            else
+                if move.is_capture
+                    let victim = squares[to]
+                    next.captured = victim
+                    clear_bits(victim, to.bit)
+                lift(from)
+                put(Piece.of(us, move.promotion), to)
+
+    @noinline
+    fn unmake_special[us: Side](move: Move)
+        let from = move.from
+        let to = move.to
+        const back = back_rank()
+        match move.kind
+            DoublePush
+                relocate(to, from)
+            CastleKingside
+                relocate(g1 + back, e1 + back)
+                relocate(f1 + back, h1 + back)
+            CastleQueenside
+                relocate(c1 + back, e1 + back)
+                relocate(d1 + back, a1 + back)
+            EnPassant
+                relocate(to, from)
+                put(Piece.of(us.other, Pawn), to - push_step())
+            else
+                lift(to)
+                put(Piece.of(us, Pawn), from)
+                if move.is_capture: put(history[ply].captured, to)
+
+    @inline
+    fn en_passant_after_double_push[us: Side](from: Square, to: Square) -> Square
+        let landed = to.bit
+        let beside = (landed << 1 & ~FileA) | (landed >> 1 & ~FileH)
+        return beside & pieces(us.other, Pawn) ? from + push_step() : Square.none
+
+    @inline
+    fn relocate[us: Side](from: Square, to: Square)
+        let piece = squares[from]
+        let path = from.bit | to.bit
+        bb[piece] ^= path
+        bb[us] ^= path
+        squares[to] = piece
+        squares[from] = NoPiece
+
+    @inline
+    fn put(piece: Piece, sq: Square)
+        let bit = sq.bit
+        bb[piece] |= bit
+        bb[piece & 1] |= bit
+        squares[sq] = piece
+        material += white_pov[piece]
+
+    @inline
+    fn lift(sq: Square)
+        clear_bits(squares[sq], sq.bit)
+        squares[sq] = NoPiece
+
+    @inline
+    fn clear_bits(piece: Piece, bit: Bitboard)
+        bb[piece] ^= bit
+        bb[piece & 1] ^= bit
+        material -= white_pov[piece]
+
+    @nosave
+    fn key_after[us: Side](move: Move, current: u64) -> u64
+        let state = &history[ply]
+        let from = move.from
+        let to = move.to
+        let mover = squares[from]
+        let rights_after = state.castling & kept_after(from, to)
+
+        let next = current ^ key_black_to_move ^ key_castling[state.castling] ^ key_castling[rights_after] ^ key_en_passant[state.en_passant] ^ piece_key(mover, from) ^ piece_key(squares[to], to)
+
+        const back = back_rank()
+        const rook = Piece.of(us, Rook)
+        match move.kind
+            Quiet, Capture: return next ^ piece_key(mover, to)
+            DoublePush: return next ^ piece_key(mover, to) ^ key_en_passant[en_passant_after_double_push(from, to)]
+            EnPassant: return next ^ piece_key(mover, to) ^ piece_key(Piece.of(us.other, Pawn), to - push_step())
+            CastleKingside: return next ^ piece_key(mover, to) ^ piece_key(rook, h1 + back) ^ piece_key(rook, f1 + back)
+            CastleQueenside: return next ^ piece_key(mover, to) ^ piece_key(rook, a1 + back) ^ piece_key(rook, d1 + back)
+        return next ^ piece_key(Piece.of(us, move.promotion), to)
+
+    fn compute_key() -> u64
+        var key: u64 = side == Black ? key_black_to_move : 0
+        key ^= key_castling[castling()] ^ key_en_passant[en_passant()]
+        for sq in 0..64
+            key ^= piece_key(squares[sq], sq)
+        return key

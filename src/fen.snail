@@ -1,0 +1,99 @@
+use make
+
+const StartFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+extend Board
+    fn load_fen(fen: str) -> bool
+        var at: i64 = 0
+        let placement_field = next_word(fen, ref at)
+        let side_field = next_word(fen, ref at)
+        let castling_field = next_word(fen, ref at)
+        let en_passant_field = next_word(fen, ref at)
+        let clock_field = next_word(fen, ref at)
+
+        var placement: [64]Piece
+        var rank = 7
+        var file = 0
+        var white_kings = 0
+        var black_kings = 0
+        for c in 0..placement_field.len
+            let symbol = placement_field[c]
+            if symbol == '/'
+                rank -= 1
+                file = 0
+            elif symbol >= '1' and symbol <= '8'
+                file += symbol - '0'
+            else
+                let piece = piece_from_letter(symbol)
+                if piece == NoPiece or file < 0 or file > 7 or rank < 0 or rank > 7: return false
+                placement[Square(file, rank)] = piece
+                if piece == Piece.of(White, King): white_kings += 1
+                if piece == Piece.of(Black, King): black_kings += 1
+                file += 1
+        if white_kings != 1 or black_kings != 1: return false
+
+        zero(&bb)
+        zero(&squares)
+        material = 0
+        ply = 0
+        zero(&history[0])
+        for sq in 0..64
+            if placement[sq] != NoPiece: put(placement[sq], sq)
+
+        side = side_field == "b" ? Black : White
+        let state = &history[0]
+
+        var rights: u8 = 0
+        for c in 0..castling_field.len
+            let symbol = castling_field[c]
+            if symbol == 'K' and has_castling_pieces(White, h1): rights |= WhiteKingside
+            if symbol == 'Q' and has_castling_pieces(White, a1): rights |= WhiteQueenside
+            if symbol == 'k' and has_castling_pieces(Black, h8): rights |= BlackKingside
+            if symbol == 'q' and has_castling_pieces(Black, a8): rights |= BlackQueenside
+        state.castling = rights
+        state.en_passant = read_en_passant(en_passant_field)
+        state.clock = parse_int(clock_field)
+        key = compute_key()
+        state.key = key
+        return true
+
+    fn has_castling_pieces(side: Side, rook_home: Square) -> bool
+        let king_home = side == White ? e1 : e8
+        return squares[king_home] == Piece.of(side, King) and squares[rook_home] == Piece.of(side, Rook)
+
+    fn read_en_passant(field: str) -> Square
+        if field.len != 2: return Square.none
+        let file = field[0] - 'a'
+        let rank = field[1] - '1'
+        let white = side == White
+        if file < 0 or file > 7 or rank != (white ? 5 : 2): return Square.none
+        let target = Square(file, rank)
+        if squares[target] != NoPiece: return Square.none
+        let victim = target + (white ? -8 : 8)
+        if squares[victim] != Piece.of(side.other, Pawn): return Square.none
+        let beside = (victim.bit << 1 & ~FileA) | (victim.bit >> 1 & ~FileH)
+        return beside & pieces(side, Pawn) ? target : Square.none
+
+fn piece_from_letter(letter: u8) -> Piece
+    match letter
+        'P': return Piece.of(White, Pawn)
+        'p': return Piece.of(Black, Pawn)
+        'N': return Piece.of(White, Knight)
+        'n': return Piece.of(Black, Knight)
+        'B': return Piece.of(White, Bishop)
+        'b': return Piece.of(Black, Bishop)
+        'R': return Piece.of(White, Rook)
+        'r': return Piece.of(Black, Rook)
+        'Q': return Piece.of(White, Queen)
+        'q': return Piece.of(Black, Queen)
+        'K': return Piece.of(White, King)
+        'k': return Piece.of(Black, King)
+    return NoPiece
+
+fn next_word(text: str, ref at: i64) -> str
+    while at < text.len and text[at] == ' '
+        at += 1
+    let start = at
+    while at < text.len and text[at] != ' '
+        at += 1
+    return text[start..at]

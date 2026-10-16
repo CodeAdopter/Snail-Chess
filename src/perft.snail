@@ -1,0 +1,61 @@
+use movegen
+use fen
+
+fn perft_walk[us: Side](board: *Board, depth: int, lists: *Move, count_leaves: bool) -> u64
+    if depth == 1 and count_leaves: return count_legal(board)
+    let n = legal(board, lists)
+    if depth == 1: return n
+    var leaves: u64 = 0
+    for i in 0..n
+        let move = lists[i]
+        board.make(move)
+        leaves += perft_walk[us.other](board, depth - 1, lists + MaxMoves, count_leaves)
+        board.unmake(move)
+    return leaves
+
+var perft_lists: [MaxMoves * 64]Move
+
+fn perft(board: *Board, depth: int, count_leaves: bool) -> u64
+    if depth == 0: return 1
+    return perft_walk[board.side](board, depth, &perft_lists[0], count_leaves)
+
+struct SuitePosition
+    name: str
+    fen: str
+    depth: int
+    expected: u64
+
+fn suite_position(i: int) -> SuitePosition
+    match i
+        0: return SuitePosition("Startpos", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", 6, 119_060_324)
+        1: return SuitePosition("Kiwipete", "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -", 5, 193_690_690)
+        2: return SuitePosition("Endgame", "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -", 6, 11_030_083)
+        3: return SuitePosition("Tactical", "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq -", 5, 15_833_292)
+        4: return SuitePosition("Promotions", "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 5, 89_941_194)
+    return SuitePosition("Midgame", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 5, 164_075_551)
+
+fn perft_suite(board: *Board, runs: int, count_leaves: bool)
+    board.load_fen(StartFen)
+    for i in 0..3
+        perft(board, 5, count_leaves)
+
+    let mode = count_leaves ? "counted leaves, perft only" : "generated leaves, as the search does"
+    print("perft suite [{mode}]  (best of {runs})")
+    var total_nodes: u64 = 0
+    var total_ms = 0.0
+    var all_correct = true
+    for p in 0..6
+        let position = suite_position(p)
+        board.load_fen(position.fen)
+        var best = 1.0e300
+        var nodes: u64 = 0
+        for r in 0..runs
+            let start = now_ms()
+            nodes = perft(board, position.depth, count_leaves)
+            best = min(best, now_ms() - start)
+        let correct = nodes == position.expected
+        all_correct = all_correct and correct
+        total_nodes += nodes
+        total_ms += best
+        print("  {correct ? "ok  " : "FAIL"} d{position.depth} {nodes:14}  {best:8.1} ms  {nodes / best / 1000.0:8.2} Mnps   {position.fen}")
+    print("  ---- total {total_nodes:14} nodes  {total_ms:8.1} ms  {total_nodes / total_ms / 1000.0:8.2} Mnps   [{all_correct ? "all correct" : "MISMATCH!"}]")

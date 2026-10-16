@@ -1,0 +1,194 @@
+use threads
+use perft
+use bench
+
+const EngineName = "Snail Chess"
+const DefaultSearchDepth = 8
+const MaxHashMegabytes = 65536
+const MaxWords = 1024
+
+struct Uci
+    board: *Board
+    threads: *SearchThreads
+    limits: SearchLimits
+    search_thread: u64
+    searching: bool
+
+    fn stop_search()
+        if not searching: return
+        threads.stop()
+        join(search_thread)
+        searching = false
+
+    fn start_search()
+        threads.reset_stop()
+        searching = true
+        search_thread = spawn(run_uci_search, self)
+
+fn run_uci_search(uci: *Uci)
+    let threads = uci.threads
+    let best = threads.find_best_move(uci.board, uci.limits)
+    if best == NoMove
+        print("bestmove 0000")
+        return
+    write("bestmove ")
+    write_move(best)
+    if threads.last_line_length > 1
+        write(" ponder ")
+        write_move(threads.last_line[1])
+    print()
+
+fn split_words(text: str, words: *str, capacity: int) -> int
+    var count = 0
+    var at: i64 = 0
+    while count < capacity
+        while at < text.len and (text[at] == ' ' or text[at] == '\t')
+            at += 1
+        if at >= text.len: break
+        let start = at
+        while at < text.len and text[at] != ' ' and text[at] != '\t'
+            at += 1
+        words[count] = text[start..at]
+        count += 1
+    return count
+
+fn uci_loop()
+    let uci = new Uci
+    uci.board = new Board
+    uci.board.load_fen(StartFen)
+    uci.threads = SearchThreads.create(DefaultHashMegabytes)
+    var words: [MaxWords]str
+
+    loop
+        let (line, ok) = read_line()
+        if not ok: break
+        let count = split_words(line, &words[0], MaxWords)
+        if count == 0: continue
+        let command = words[0]
+
+        if command == "uci"
+            print("id name {EngineName}")
+            print("id author Angelo Wolff")
+            print("option name Hash type spin default {DefaultHashMegabytes} min 0 max {MaxHashMegabytes}")
+            print("option name Threads type spin default 1 min 1 max {MaxThreads}")
+            print("uciok")
+        elif command == "isready"
+            print("readyok")
+        elif command == "ucinewgame"
+            uci.stop_search()
+            uci.board.load_fen(StartFen)
+            uci.threads.clear_hash()
+        elif command == "setoption"
+            uci.stop_search()
+            set_option(uci.threads, &words[0], count)
+        elif command == "position"
+            uci.stop_search()
+            set_position(uci.board, line, &words[0], count)
+        elif command == "go"
+            uci.stop_search()
+            if parse_go(uci, &words[0], count): uci.start_search()
+        elif command == "stop"
+            uci.threads.stop()
+        elif command == "bench"
+            uci.stop_search()
+            run_bench(count > 1 ? parse_int(words[1]) : DefaultBenchDepth)
+        elif command == "quit"
+            break
+    uci.stop_search()
+
+fn set_option(threads: *SearchThreads, words: *str, count: int)
+    if count < 5 or words[1] != "name" or words[3] != "value": return
+    let name = words[2]
+    let value = parse_int(words[4]) as int
+    if name == "Hash" or name == "hash": threads.set_hash(clamp(value, 0, MaxHashMegabytes))
+    elif name == "Threads" or name == "threads": threads.set_threads(clamp(value, 1, MaxThreads))
+
+fn set_position(board: *Board, line: str, words: *str, count: int)
+    var next = 2
+    if count > 1 and words[1] == "startpos"
+        board.load_fen(StartFen)
+    elif count > 1 and words[1] == "fen"
+        while next < count and words[next] != "moves"
+            next += 1
+        if next == 2: return
+        let start = words[2].ptr - line.ptr
+        let last = words[next - 1]
+        let end = last.ptr - line.ptr + last.len
+        if not board.load_fen(line[start..end]): return
+    else
+        return
+
+    if next < count and words[next] == "moves"
+        for i in next + 1..count
+            let move = parse_move(board, words[i])
+            if move == NoMove: break
+            board.play(move)
+
+    board.discard_history()
+
+fn parse_move(board: *Board, text: str) -> Move
+    var moves: [MaxMoves]Move
+    let count = legal_moves(board, &moves[0])
+    for i in 0..count
+        if move_matches(moves[i], text): return moves[i]
+    return NoMove
+
+fn move_matches(move: Move, text: str) -> bool
+    if text.len < 4: return false
+    if text[0] != 'a' + move.from.file or text[1] != '1' + move.from.rank: return false
+    if text[2] != 'a' + move.to.file or text[3] != '1' + move.to.rank: return false
+    if not move.is_promotion: return text.len == 4
+    if text.len != 5: return false
+    match move.promotion
+        Knight: return text[4] == 'n'
+        Bishop: return text[4] == 'b'
+        Rook: return text[4] == 'r'
+    return text[4] == 'q'
+
+fn parse_go(uci: *Uci, words: *str, count: int) -> bool
+    var white_time: i64 = 0
+    var black_time: i64 = 0
+    var white_increment: i64 = 0
+    var black_increment: i64 = 0
+    var move_time: i64 = 0
+    var nodes: i64 = 0
+    var depth = 0
+    var infinite = false
+
+    for i in 1..count
+        let word = words[i]
+        let value = i + 1 < count ? parse_int(words[i + 1]) : 0
+        if word == "infinite": infinite = true
+        elif word == "depth": depth = value
+        elif word == "movetime": move_time = value
+        elif word == "nodes": nodes = value
+        elif word == "wtime": white_time = value
+        elif word == "btime": black_time = value
+        elif word == "winc": white_increment = value
+        elif word == "binc": black_increment = value
+        elif word == "perft"
+            let start = now_ms()
+            let total = perft(uci.board, value, false)
+            let ms = now_ms() - start
+            print("Nodes searched: {total}  {ms:.0} ms  {total / max(ms, 0.001) / 1000.0:.1} Mnps")
+            return false
+
+    var limits: SearchLimits
+    if infinite
+        limits.until_stopped = true
+    elif move_time > 0
+        limits.move_time_ms = move_time
+    elif nodes > 0
+        limits.max_nodes = nodes
+    elif depth > 0
+        limits.max_depth = depth
+    elif white_time > 0 or black_time > 0
+        let white = uci.board.side == White
+        let remaining = white ? white_time : black_time
+        let increment = white ? white_increment : black_increment
+        let budget = remaining / 20 + increment / 2
+        limits.move_time_ms = clamp(budget, 1, max(1, remaining - 30))
+    else
+        limits.max_depth = DefaultSearchDepth
+    uci.limits = limits
+    return true

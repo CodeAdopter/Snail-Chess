@@ -1,0 +1,140 @@
+use quiescence
+use movegen
+use legality
+
+@inline
+fn child_returns_stand_pat[us: Side](board: *Board, move: Move, stand_pat: int, alpha: int, beta: int, ply: int) -> (bool, int)
+    let score = stand_pat + material_gain(board, move)
+    if score <= alpha or ply + 1 >= MaximumPly - 1: return true, score
+    return score >= beta and beta < MateBound and score - opponent_max_gain_after(board, move) - DeltaMargin >= beta, score
+
+extend Search
+    fn frontier_tactical_first[us: Side](board: *Board, stand_pat: int, ref alpha: int, beta: int, ply: int, ref best_score: int, ref resume_at: int, ref score: int) -> bool
+        resume_at = -1
+        score = 0
+
+        let max_gain = max_material_gain(board)
+        if stand_pat + max_gain <= alpha
+            score = has_legal_move(board) ? stand_pat + max_gain : board.in_check() ? -MateValue + ply : 0
+            return true
+
+        let moves = move_buffer(ply)
+        let (tactical_count, has_quiet) = tactical(board, moves)
+
+        if tactical_count > MaxOrderedTacticalMoves: return false
+
+        if tactical_count == 0 and not has_quiet
+            score = board.in_check() ? -MateValue + ply : 0
+            return true
+
+        sort_tactical_moves(board, moves, tactical_count)
+
+        for i in 0..tactical_count
+            let move = moves[i]
+            var (skipped, move_score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
+            if not skipped
+                board.make(move)
+                move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+                board.unmake(move)
+                if stop_requested: return true
+
+            if move_score > best_score: best_score = move_score
+            if move_score > alpha
+                alpha = move_score
+                update_pv(ply, move, true)
+            if alpha >= beta
+                score = best_score
+                return true
+
+        if not has_quiet
+            score = best_score
+            return true
+
+        if stand_pat <= alpha
+            score = max(best_score, stand_pat)
+            return true
+
+        resume_at = tactical_count
+        return false
+
+    fn tactical_first[us: Side](board: *Board, depth: int, ref alpha: int, beta: int, ply: int, hash: u64, table_move: Move, ref best_score: int, ref best_move: Move, ref resume_at: int, ref score: int) -> bool
+        resume_at = -1
+        score = 0
+
+        let moves = move_buffer(ply)
+        let (tactical_count, has_quiet) = tactical(board, moves)
+        if tactical_count > MaxOrderedTacticalMoves: return false
+        if tactical_count == 0
+            resume_at = 0
+            return false
+
+        sort_tactical_moves(board, moves, tactical_count)
+        if table_move.code >= FirstTactical
+            let found = find_move(moves, 0, tactical_count, table_move.code)
+            if found > 0
+                copy(moves + 1, moves, found)
+                moves[0] = table_move
+
+        for i in 0..tactical_count
+            let move = moves[i]
+            if i + 1 < tactical_count: prefetch_child(board, moves[i + 1], depth, hash)
+
+            let move_score = search_child(board, move, depth, alpha, beta, ply, hash)
+            if stop_requested: return true
+
+            if move_score > best_score
+                best_score = move_score
+                best_move = move
+            if move_score > alpha
+                alpha = move_score
+                update_pv(ply, move, false)
+            if alpha >= beta
+                score = best_score
+                return true
+
+        if not has_quiet
+            score = best_score
+            return true
+
+        resume_at = tactical_count
+        return false
+
+    fn killers_first[us: Side](board: *Board, depth: int, stand_pat: int, ref alpha: int, beta: int, ply: int, hash: u64, searched_first: Move, ref best_score: int, ref best_move: Move, ref searched: int, ref score: int) -> bool
+        searched = 0
+        score = 0
+
+        for k in 0..2
+            let move = killers[ply * 2 + k]
+            if move == NoMove: continue
+            if move == searched_first
+                searched += 1
+                continue
+            if not is_legal_quiet(board, move): continue
+
+            if k == 0 and killers[ply * 2 + 1] != NoMove: prefetch_child(board, killers[ply * 2 + 1], depth, hash)
+
+            searched += 1
+            var move_score = 0
+            var skipped = false
+            if depth == 1: (skipped, move_score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
+            if not skipped
+                if depth > 1
+                    move_score = search_child(board, move, depth, alpha, beta, ply, hash)
+                else
+                    board.make(move)
+                    move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+                    board.unmake(move)
+                if stop_requested: return true
+
+            if move_score > best_score
+                best_score = move_score
+                best_move = move
+            if move_score > alpha
+                alpha = move_score
+                update_pv(ply, move, depth == 1)
+            if alpha >= beta
+                remember_killer(ply, move)
+                score = best_score
+                return true
+
+        return false

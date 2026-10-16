@@ -1,0 +1,69 @@
+use board
+use tt
+
+const MaximumPly = 128
+const MaxOrderedTacticalMoves = 16
+const MovesPerPly = 256
+
+const TableMinimumDepth = 2
+
+struct SearchLimits
+    max_depth: int
+    move_time_ms: i64
+    max_nodes: i64
+    until_stopped: bool
+
+struct Search
+    killers: [MaximumPly * 2]Move
+    move_stack: [MaximumPly * MovesPerPly]Move
+    tactical_scores: [MaxOrderedTacticalMoves]int
+
+    pv_table: [MaximumPly * MaximumPly]Move
+    pv_length: [MaximumPly + 1]int
+
+    table: *TranspositionTable
+    group: *SearchThreads
+    root: *Board
+    helper_index: int
+    suppress_output: bool
+
+    start_ms: f64
+    node_count: i64
+    main_node_count: i64
+    time_limit_ms: i64
+    node_limit: i64
+    until_stopped: bool
+    stop_requested: bool @volatile
+    pv_move: Move
+
+    last_node_count: i64
+    last_quiescence_nodes: i64
+    last_elapsed_ms: i64
+    last_score: int
+    last_depth: int
+    last_line: [MaximumPly]Move
+    last_line_length: int
+
+    fn stop()
+        stop_requested = true
+
+    fn elapsed_ms() -> i64
+        return (now_ms() - start_ms) as i64
+
+    fn reached_limit() -> bool
+        if node_limit > 0 and node_count >= node_limit: return true
+        if until_stopped or time_limit_ms == i64.max: return false
+        return elapsed_ms() >= time_limit_ms
+
+    @inline
+    fn move_buffer(ply: int) -> *Move
+        return &move_stack[ply * MovesPerPly]
+
+    fn update_pv(ply: int, move: Move, child_is_leaf: bool)
+        let row = ply * MaximumPly
+        let child_row = row + MaximumPly
+        let length = child_is_leaf ? ply + 1 : pv_length[ply + 1]
+        pv_table[row + ply] = move
+        for i in ply + 1..length
+            pv_table[row + i] = pv_table[child_row + i]
+        pv_length[ply] = length

@@ -1,0 +1,45 @@
+use ordering
+use captures
+use eval
+use make
+
+extend Search
+    @nosave
+    fn quiescence[us: Side](board: *Board, alpha: int, beta: int, ply: int) -> int
+        if stop_requested: return 0
+        if node_count & 8191 == 0 and reached_limit()
+            stop_requested = true
+            return 0
+
+        node_count += 1
+
+        let stand_pat = evaluate(board)
+        if stand_pat >= beta: return stand_pat
+        if stand_pat > alpha: alpha = stand_pat
+        if ply >= MaximumPly - 1: return stand_pat
+
+        if alpha > -MateBound and stand_pat + max_material_gain(board) + DeltaMargin <= alpha: return stand_pat
+
+        let minimum_gain = alpha > -MateBound ? alpha - stand_pat - DeltaMargin : int.min
+        let moves = move_buffer(ply)
+        let count = pseudo_legal_captures(board, moves, minimum_gain)
+        if count == 0: return stand_pat
+        if count > 1: sort_tactical_moves(board, moves, count)
+
+        var best = stand_pat
+        for i in 0..count
+            let move = moves[i]
+            if alpha > -MateBound and stand_pat + material_gain(board, move) + DeltaMargin <= alpha: continue
+
+            board.make(move)
+            if board.in_check()
+                board.unmake(move)
+                continue
+            let score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+            board.unmake(move)
+            if stop_requested: return 0
+
+            if score > best: best = score
+            if score >= beta: return score
+            if score > alpha: alpha = score
+        return best

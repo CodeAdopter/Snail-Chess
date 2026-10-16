@@ -1,0 +1,25 @@
+use eval
+
+fn write_move(move: Move)
+    write("{move.from}{move.to}")
+    if move.is_promotion
+        match move.promotion
+            Knight: write("n")
+            Bishop: write("b")
+            Rook: write("r")
+            Queen: write("q")
+
+fn write_score(score: int)
+    if score >= MateBound: write("mate {(MateValue - score + 1) / 2}")
+    elif score <= -MateBound: write("mate -{(MateValue + score) / 2}")
+    else: write("cp {score}")
+
+fn print_info(depth: int, score: int, nodes: i64, ms: i64, line: *Move, length: int)
+    let nps = ms > 0 ? nodes * 1000 / ms : nodes
+    write("info depth {depth} score ")
+    write_score(score)
+    write(" nodes {nodes} nps {nps} time {ms} pv")
+    for i in 0..length
+        write(" ")
+        write_move(line[i])
+    print()

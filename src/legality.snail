@@ -1,0 +1,66 @@
+use threats
+use castling
+
+@nosave
+fn is_legal_quiet[us: Side](board: *Board, move: Move) -> bool
+    let kind = move.kind
+    if kind > CastleQueenside: return false
+
+    let from = move.from
+    let to = move.to
+    let from_bit = from.bit
+    let to_bit = to.bit
+    let ours = board.occupancy(us)
+    let occupied = ours | board.occupancy(us.other)
+    if not ours & from_bit or occupied & to_bit: return false
+
+    let piece = board.squares[from].kind
+    if piece == King: return is_legal_king_quiet(board, kind, from, to, occupied)
+
+    let is_castle = kind == CastleKingside or kind == CastleQueenside
+    if is_castle or kind == DoublePush and piece != Pawn: return false
+
+    let king = board.king_square(us)
+    let threats = find_threats(board, king, ours, occupied)
+    if threats.checkers.many or not threats.check_answers(king) & to_bit: return false
+
+    let straight = threats.straight_pins
+    let diagonal = threats.diagonal_pins
+    let pinned_straight = from_bit & straight != 0
+    let pinned_diagonally = from_bit & diagonal != 0
+
+    match piece
+        Pawn
+            if pinned_diagonally or pinned_straight and not to_bit & straight: return false
+            if to_bit & promotion_rank(): return false
+            if kind == Quiet: return to == from + push_step()
+            return from_bit & pawn_start() != 0 and to == from + 2 * push_step() and not occupied & (from + push_step()).bit
+        Knight
+            return not pinned_straight and not pinned_diagonally and knight_attacks(from) & to_bit != 0
+        Bishop
+            if pinned_straight: return false
+            return bishop_attacks(from, occupied) & to_bit & (pinned_diagonally ? diagonal : ~0) != 0
+        Rook
+            if pinned_diagonally: return false
+            return rook_attacks(from, occupied) & to_bit & (pinned_straight ? straight : ~0) != 0
+
+    let reach = pinned_straight ? rook_attacks(from, occupied) & straight : pinned_diagonally ? bishop_attacks(from, occupied) & diagonal : queen_attacks(from, occupied)
+    return reach & to_bit != 0
+
+fn is_legal_king_quiet[us: Side](board: *Board, kind: MoveKind, from: Square, to: Square, occupied: Bitboard) -> bool
+    if kind == Quiet: return to in king_attacks(from) and not board.is_attacked(to, occupied ^ from.bit)
+    if kind == DoublePush: return false
+
+    const offset = back_rank()
+    let kingside = kind == CastleKingside
+    let right = kingside ? kingside_right(us) : queenside_right(us)
+    let landing = (kingside ? g1 : c1) + offset
+    let gap = (kingside ? KingsideGap : QueensideGap) << offset
+    let passage = (kingside ? KingsidePassage : QueensidePassage) << offset
+
+    if from != e1 + offset or to != landing: return false
+    if not board.castling() & right or occupied & gap: return false
+    if board.is_attacked(from, occupied): return false
+    for sq in passage
+        if board.is_attacked(sq, occupied): return false
+    return true

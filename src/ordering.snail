@@ -1,0 +1,147 @@
+use search
+use material
+
+var mvv_lva: [PieceLimit * 32]int
+
+fn value_or(piece: int, fallback: int) -> int
+    let kind = piece >> 1
+    return kind != 0 ? KindValue[kind] : fallback
+
+init
+    for victim in 0..PieceLimit
+        for capture_bit in 0..2
+            let victim_value = value_or(victim, capture_bit != 0 ? PawnValue : 0)
+            for attacker in 0..PieceLimit
+                mvv_lva[victim << 5 | capture_bit << 4 | attacker] = victim_value * 16 - value_or(attacker, PawnValue)
+
+@inline
+fn find_move(moves: *Move, start: int, length: int, code: u16) -> int
+    let codes = moves as *u16
+    let target = u16x16.splat(code)
+    var i = start
+    while i < length
+        let mask = (u16x16.load(codes + i) == target).bits
+        if mask
+            let found = i + mask.first
+            return found < length ? found : -1
+        i += 16
+    return -1
+
+@inline
+fn swap(moves: *Move, a: int, b: int)
+    let held = moves[a]
+    moves[a] = moves[b]
+    moves[b] = held
+
+fn centrality_key(board: *Board, move: Move) -> int
+    if move.is_castle: return 7
+    if board.squares[move.from].kind == King: return -1
+    let file = move.to.file
+    let rank = move.to.rank
+    return min(file, 7 - file) + min(rank, 7 - rank)
+
+fn most_central_move(board: *Board, moves: *Move, count: int) -> Move
+    var best = moves[0]
+    var best_key = centrality_key(board, best)
+    for i in 1..count
+        let key = centrality_key(board, moves[i])
+        if key > best_key
+            best = moves[i]
+            best_key = key
+    return best
+
+fn sort_by_centrality(board: *Board, moves: *Move, count: int)
+    var keys: [MaxMoves]int
+    for i in 0..count
+        let move = moves[i]
+        let key = centrality_key(board, move)
+        var j = i - 1
+        while j >= 0 and keys[j] < key
+            moves[j + 1] = moves[j]
+            keys[j + 1] = keys[j]
+            j -= 1
+        moves[j + 1] = move
+        keys[j + 1] = key
+
+extend Search
+    @inline
+    fn remember_killer(ply: int, move: Move)
+        if killers[ply * 2] != move
+            killers[ply * 2 + 1] = killers[ply * 2]
+            killers[ply * 2] = move
+
+    @nosave
+    fn order_tactical_moves(board: *Board, moves: *Move, length: int) -> int
+        let codes = moves as *u16
+        var count = 0
+        var i = 0
+
+        if length >= 16
+            let threshold = u16x16.splat(FirstTactical)
+            let last_chunk = length - 16
+            while i <= last_chunk and count < MaxOrderedTacticalMoves
+                var mask = (u16x16.load(codes + i) >= threshold).bits
+                while mask
+                    if count >= MaxOrderedTacticalMoves: break
+                    let index = i + mask.first
+                    mask &= mask - 1
+                    score_and_swap(board, codes, index, count)
+                    count += 1
+                i += 16
+
+        while i < length and count < MaxOrderedTacticalMoves
+            if codes[i] >= FirstTactical
+                score_and_swap(board, codes, i, count)
+                count += 1
+            i += 1
+
+        for k in 1..count
+            let code = codes[k]
+            let score = tactical_scores[k]
+            var j = k - 1
+            while j >= 0 and tactical_scores[j] < score
+                codes[j + 1] = codes[j]
+                tactical_scores[j + 1] = tactical_scores[j]
+                j -= 1
+            codes[j + 1] = code
+            tactical_scores[j + 1] = score
+        return count
+
+    @inline
+    fn sort_tactical_moves(board: *Board, moves: *Move, count: int)
+        let codes = moves as *u16
+        let length = min(count, MaxOrderedTacticalMoves)
+        for k in 0..length
+            let code = codes[k]
+            let score = tactical_score(board, code)
+            var j = k - 1
+            while j >= 0 and tactical_scores[j] < score
+                codes[j + 1] = codes[j]
+                tactical_scores[j + 1] = tactical_scores[j]
+                j -= 1
+            codes[j + 1] = code
+            tactical_scores[j + 1] = score
+
+    @inline
+    fn tactical_score(board: *Board, code: u16) -> int
+        let victim = board.squares[code >> 6 & 63]
+        let attacker = board.squares[code & 63]
+        return mvv_lva[victim << 5 | (code >> 14 & 1) << 4 | attacker] + (code >> 15) * QueenValue
+
+    @inline
+    fn score_and_swap(board: *Board, codes: *u16, index: int, slot: int)
+        let code = codes[index]
+        codes[index] = codes[slot]
+        codes[slot] = code
+        tactical_scores[slot] = tactical_score(board, code)
+
+    fn promote_killers(moves: *Move, length: int, insert_at: int, ply: int)
+        var at = insert_at
+        for k in 0..2
+            if at >= length: break
+            let killer = killers[ply * 2 + k]
+            if killer == NoMove: continue
+            let i = find_move(moves, at, length, killer.code)
+            if i < 0: continue
+            swap(moves, at, i)
+            at += 1

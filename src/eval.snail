@@ -1,0 +1,36 @@
+use board
+use material
+
+const Infinity = 32000
+const MateValue = 30000
+const MateBound = MateValue - 1000
+const DeltaMargin = 200
+
+@inline
+fn evaluate[us: Side](board: *Board) -> int
+    return us == White ? board.material : -board.material
+
+@inline
+fn material_gain(board: *Board, move: Move) -> int
+    return capture_gain[board.squares[move.to]] + kind_gain[move.kind]
+
+@inline
+fn max_material_gain[us: Side](board: *Board) -> int
+    const them = us.other
+    var gain = board.pieces(them, Queen) ? QueenValue : board.pieces(them, Rook) ? RookValue : board.pieces(them, Bishop) ? BishopValue : board.pieces(them, Knight) ? KnightValue : PawnValue
+    if board.pieces(us, Pawn) & (us == White ? Rank7 : Rank2): gain += QueenValue - PawnValue
+    return gain
+
+@inline
+fn opponent_max_gain_after[us: Side](board: *Board, move: Move) -> int
+    const them = us.other
+    let promoted = move.is_promotion ? move.promotion : NoKind
+    var gain = board.pieces(us, Queen) or promoted == Queen ? QueenValue : board.pieces(us, Rook) or promoted == Rook ? RookValue : board.pieces(us, Bishop) or promoted == Bishop ? BishopValue : board.pieces(us, Knight) or promoted == Knight ? KnightValue : PawnValue
+    if board.pieces(them, Pawn) & (them == White ? Rank7 : Rank2) & ~move.to.bit: gain += QueenValue - PawnValue
+    return gain
+
+fn score_to_table(score: int, ply: int) -> int
+    return score >= MateBound ? score + ply : score <= -MateBound ? score - ply : score
+
+fn score_from_table(score: int, ply: int) -> int
+    return score >= MateBound ? score - ply : score <= -MateBound ? score + ply : score
