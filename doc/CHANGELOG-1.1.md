@@ -1,12 +1,14 @@
 # Snail Chess 1.1
 
-| Rating | Speed | Size | Snail Rating |
+Commit b10cb45
+
+| Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~1546 | 30.3 Mnps | 45 KB | ~2309 |
 
 ## Engine
 
-| Change | Rating | Speed | Size |
+| Change | Rating | Search Speed | Size |
 |---|---|---|---|
 | Repetition and fifty-move draws | +206 | ±0% | ±0 KB |
 

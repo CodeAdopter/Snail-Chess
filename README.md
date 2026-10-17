@@ -6,10 +6,12 @@ Snail Chess evaluates material only. No piece-square tables, no NNUE.
 
 ## Versions
 
-| Version | Rating | Speed | Size | Snail Rating |
+| Version | Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|---|
-| 1.0 | ~1340 | 30.3 Mnps | 46 KB | ~2102 |
-| 1.1 | ~1546 | 30.3 Mnps | 45 KB | ~2309 |
+| [1.0](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.0) | ~1340 | 30.3 Mnps | 46 KB | ~2102 |
+| [1.1](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.1) | ~1546 | 30.3 Mnps | 45 KB | ~2309 |
+| [1.2](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.2) | ~1524 | 30.6 Mnps | 45 KB | ~2289 |
+| [1.3](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.3) | ~1623 | 41.1 Mnps | 46 KB | ~2428 |
 
 Start with the engine's Elo, then:
 
@@ -22,7 +24,7 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 
 ## Snail Ratings List
 
-| # | Engine | Rating | Speed | Size | Snail Rating |
+| # | Engine | Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|---|---|
 | 1 | c4ke 3.0 | 3307 | 3.03 Mnps | 4 KB | 3947 |
 | 2 | ice4 6.1 | 3173 | 2.98 Mnps | 4 KB | 3811 |
@@ -67,7 +69,7 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 | 41 | Stash 10 | 1620* | 11.26 Mnps | 425 KB | 2045 |
 | 42 | Stash 8 | 1090* | 7.74 Mnps | 394 KB | 1468 |
 
-Weights are based on my personal preference, and engines were picked by hand. Speed comes from each engine's own bench, or a timed search if it doesn't have one. Ratings are from CCRL Blitz, unless marked with * or ~, which means they're estimates.
+Weights are based on my personal preference, and engines were picked by hand. Search speed comes from each engine's own bench, or a timed search if it doesn't have one. Ratings are from CCRL Blitz, unless marked with * or ~, which means they're estimates.
 
 Want your engine to join the snail race? Open an issue or discussion on GitHub with a link to a release and let me know! 🐌
 

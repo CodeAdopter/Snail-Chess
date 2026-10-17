@@ -1,12 +1,14 @@
 # Snail Chess 1.2
 
-| Rating | Speed | Size | Snail Rating |
+Commit deb1f33
+
+| Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~1524 | 30.6 Mnps | 45 KB | ~2289 |
 
 ## Engine
 
-| Change | Rating | SPRT | Speed | Size |
+| Change | Rating | SPRT | Search Speed | Size |
 |---|---|---|---|---|
 | Time management | -22 | +62 ± 20 | ±0% | ±0 KB |
 

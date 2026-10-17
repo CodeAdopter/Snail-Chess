@@ -1,12 +1,14 @@
 # Snail Chess 1.3
 
-| Rating | Speed | Size | Snail Rating |
+Commit 97e1f59
+
+| Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~1623 | 41.1 Mnps | 46 KB | ~2428 |
 
 ## Engine
 
-| Change | Rating | SPRT | Speed | Size |
+| Change | Rating | SPRT | Search Speed | Size |
 |---|---|---|---|---|
 | Reverse futility pruning | +99 | +66 ± 21 | +34% | +1.5 KB |
 
