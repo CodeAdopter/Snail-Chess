@@ -1,6 +1,7 @@
 use stages
 use draws
 use futility
+use nullmove
 
 extend Search
     @inline
@@ -17,6 +18,19 @@ extend Search
         board.make(move)
         let score = -alpha_beta[us.other](board, depth - 1, -beta, -alpha, ply + 1, child_hash)
         board.unmake(move)
+        return score
+
+    @noinline
+    fn search_null[us: Side](board: *Board, depth: int, beta: int, ply: int, hash: u64) -> int
+        let reduced = null_move_depth(depth)
+        var child_hash: u64 = 0
+        if hash != 0 and reduced >= TableMinimumDepth
+            child_hash = board.key_after_pass(hash)
+            table.preload(child_hash)
+            clocks[ply + 1] = 0
+        board.pass()
+        let score = -alpha_beta[us.other](board, reduced, -beta, 1 - beta, ply + 1, child_hash)
+        board.unpass()
         return score
 
     @nosave
@@ -45,6 +59,11 @@ extend Search
                 if table_move != NoMove: prefetch_child(board, table_move, depth, hash)
 
         if ply > 0 and reverse_futility(board, depth, beta): return evaluate(board)
+
+        if ply > 0 and allows_null_move(board, depth, beta)
+            let score = search_null(board, depth, beta, ply, hash)
+            if stop_requested: return 0
+            if score >= beta: return score >= MateBound ? beta : score
 
         let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move)
         if stopped: return 0

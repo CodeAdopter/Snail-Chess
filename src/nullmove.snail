@@ -1,0 +1,30 @@
+use eval
+use keys
+use config
+
+extend Board
+    @inline
+    fn pass[us: Side]()
+        let next = &history[ply + 1]
+        next.castling = history[ply].castling
+        next.en_passant = Square.none
+        ply += 1
+        side = us.other
+
+    @inline
+    fn unpass[us: Side]()
+        ply -= 1
+        side = us
+
+    @inline
+    fn key_after_pass(current: u64) -> u64
+        return current ^ key_black_to_move ^ key_en_passant[en_passant()]
+
+@inline
+fn allows_null_move[us: Side](board: *Board, depth: int, beta: int) -> bool
+    if depth < NullMoveMinDepth or abs(beta) >= MateBound or evaluate(board) < beta: return false
+    return board.occupancy(us) != board.pieces(us, Pawn) | board.pieces(us, King) and not board.in_check()
+
+@inline
+fn null_move_depth(depth: int) -> int
+    return depth - 1 - NullMoveReduction - depth / NullMoveDepthDivisor
