@@ -1,4 +1,5 @@
 use stages
+use draws
 
 extend Search
     @inline
@@ -11,6 +12,7 @@ extend Search
         if hash != 0 and depth - 1 >= TableMinimumDepth
             child_hash = board.key_after(move, hash)
             table.preload(child_hash)
+            clocks[ply + 1] = board.resets_clock(move) ? 0 : clocks[ply] + 1
         board.make(move)
         let score = -alpha_beta[us.other](board, depth - 1, -beta, -alpha, ply + 1, child_hash)
         board.unmake(move)
@@ -30,6 +32,8 @@ extend Search
 
         var table_move = NoMove
         if hash != 0
+            if ply > 0 and is_draw(hash, ply): return 0
+            seen_keys[root_index + ply] = hash
             let entry = table.probe(hash)
             if entry != NoEntry
                 table_move = entry.move

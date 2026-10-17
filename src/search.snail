@@ -21,6 +21,10 @@ struct Search
     pv_table: [MaximumPly * MaximumPly]Move
     pv_length: [MaximumPly + 1]int
 
+    seen_keys: [FiftyMovePlies + MaximumPly]u64
+    clocks: [MaximumPly]int
+    root_index: int
+
     table: *TranspositionTable
     group: *SearchThreads
     root: *Board

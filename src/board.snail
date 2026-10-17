@@ -2,6 +2,7 @@ use attacks
 use pawns
 
 const HistoryCapacity = 2048
+const FiftyMovePlies = 100
 
 struct PlyState
     key: u64
@@ -18,6 +19,8 @@ struct Board
     key: u64
     material: int
     history: [HistoryCapacity]PlyState
+    past_keys: [FiftyMovePlies]u64
+    past_count: int
 
     @inline
     fn state() -> *PlyState

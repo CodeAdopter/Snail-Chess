@@ -8,7 +8,8 @@ Snail Chess evaluates material only. No piece-square tables, no NNUE.
 
 | Version | Rating | Speed | Size | Snail Rating |
 |---|---|---|---|---|
-| 1.0.0 | ~1340 | 30.3 Mnps | 46 KB | ~2102 |
+| 1.0 | ~1340 | 30.3 Mnps | 46 KB | ~2102 |
+| 1.1 | ~1546 | 30.3 Mnps | 45 KB | ~2309 |
 
 $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\frac{1\ \text{MB}}{\text{Size}}\right)$$
 
@@ -60,9 +61,9 @@ Slower or bigger engines lose points at the same rates.
 | 35 | Stash 22 | 2770* | 7.37 Mnps | 641 KB | 3099 |
 | 36 | Stash 16.2 | 2220* | 5.54 Mnps | 446 KB | 2539 |
 | 37 | Stash 14 | 2059 | 9.14 Mnps | 437 KB | 2452 |
-| 38 | Stash 12 | 1883 | 11.38 Mnps | 430 KB | 2309 |
-| 39 | MinimalChess 0.6 | 2439 | 1.66 Mnps | 19 MB | 2259 |
-| 40 | **Snail Chess 1.0.0** | ~1340 | 30.27 Mnps | 46 KB | **~2102** |
+| 38 | **Snail Chess 1.1** | ~1546 | 30.28 Mnps | 45 KB | **~2309** |
+| 39 | Stash 12 | 1883 | 11.38 Mnps | 430 KB | 2309 |
+| 40 | MinimalChess 0.6 | 2439 | 1.66 Mnps | 19 MB | 2259 |
 | 41 | Stash 10 | 1620* | 11.26 Mnps | 425 KB | 2045 |
 | 42 | Stash 8 | 1090* | 7.74 Mnps | 394 KB | 1468 |
 

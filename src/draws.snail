@@ -1,0 +1,19 @@
+use search
+
+extend Search
+    fn remember_game(board: *Board)
+        root_index = board.past_count
+        copy(&seen_keys[0], &board.past_keys[0], root_index)
+        clocks[0] = board.state().clock as int
+
+    @inline
+    fn is_draw(hash: u64, ply: int) -> bool
+        let clock = clocks[ply]
+        if clock >= FiftyMovePlies: return true
+        let at = root_index + ply
+        let oldest = max(at - clock, 0)
+        var i = at - 4
+        while i >= oldest
+            if seen_keys[i] == hash: return true
+            i -= 2
+        return false

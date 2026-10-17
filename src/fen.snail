@@ -36,6 +36,7 @@ extend Board
         zero(&squares)
         material = 0
         ply = 0
+        past_count = 0
         zero(&history[0])
         for sq in 0..64
             if placement[sq] != NoPiece: put(placement[sq], sq)

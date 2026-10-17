@@ -40,14 +40,20 @@ extend Board
 
     fn apply[us: Side](move: Move)
         let next_key = key_after(move, key)
-        let resets_clock = move.is_capture or squares[move.from].kind == Pawn
-        let clock = resets_clock ? 0 : history[ply].clock + 1
+        let clock = resets_clock(move) ? 0 : history[ply].clock + 1
         make(move)
         history[ply].key = next_key
         history[ply].clock = min(clock, 65535)
         key = next_key
 
+    @inline
+    fn resets_clock(move: Move) -> bool
+        return move.is_capture or squares[move.from].kind == Pawn
+
     fn discard_history()
+        past_count = min(min(history[ply].clock as int, ply), FiftyMovePlies)
+        for i in 0..past_count
+            past_keys[i] = history[ply - past_count + i].key
         history[0] = history[ply]
         ply = 0
 
