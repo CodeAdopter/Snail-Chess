@@ -1,5 +1,6 @@
 use stages
 use draws
+use futility
 
 extend Search
     @inline
@@ -42,6 +43,8 @@ extend Search
                     if entry.bound & Lower and table_score >= beta: return table_score
                     if entry.bound & Upper and table_score <= alpha: return table_score
                 if table_move != NoMove: prefetch_child(board, table_move, depth, hash)
+
+        if ply > 0 and reverse_futility(board, depth, beta): return evaluate(board)
 
         let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move)
         if stopped: return 0

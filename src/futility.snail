@@ -1,0 +1,7 @@
+use eval
+use config
+
+@inline
+fn reverse_futility[us: Side](board: *Board, depth: int, beta: int) -> bool
+    if depth > ReverseFutilityDepth or abs(beta) >= MateBound: return false
+    return evaluate(board) - ReverseFutilityMargin * depth >= beta and not board.in_check()

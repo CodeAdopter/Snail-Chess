@@ -1,5 +1,5 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.2"
+const EngineVersion = "1.3"
 const EngineAuthor = "Angelo Wolff"
 
 const DefaultHashMegabytes = 64
@@ -34,3 +34,6 @@ const ScoreShiftMargin = 51
 const ScoreShiftScale = 143
 const SoftScaleFloor = 40
 const SoftScaleCeiling = 300
+
+const ReverseFutilityDepth = 6
+const ReverseFutilityMargin = 100
