@@ -11,14 +11,14 @@ Snail Chess evaluates material only. No piece-square tables, no NNUE.
 | 1.0 | ~1340 | 30.3 Mnps | 46 KB | ~2102 |
 | 1.1 | ~1546 | 30.3 Mnps | 45 KB | ~2309 |
 
-$$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\frac{1\ \text{MB}}{\text{Size}}\right)$$
-
 Start with the engine's Elo, then:
 
 - **+100** for every doubling of speed above 1 Mnps
 - **+60** for every halving of size below 1 MB
 
 Slower or bigger engines lose points at the same rates.
+
+$$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\frac{1\ \text{MB}}{\text{Size}}\right)$$
 
 ## Snail Ratings List
 
