@@ -1,0 +1,52 @@
+use attacks
+use pawns
+use weights
+
+const Centre = (FileD | FileE) & (Rank4 | Rank5)
+const LongDiagonals: Bitboard = 0x8142241818244281
+
+var placement: [PieceLimit * 64]Score
+
+@inline
+fn placed(piece: Piece, sq: Square) -> Score
+    return placement[piece << 6 | sq]
+
+fn centre_ring(sq: Square) -> int
+    return max(abs(2 * sq.file - 7), abs(2 * sq.rank - 7)) >> 1
+
+fn pawn_rules(sq: Square) -> Score
+    let attacks = capture_west[White](sq.bit) | capture_east[White](sq.bit)
+    return PawnRank[sq.rank] + (sq in Centre ? PawnCentre : 0) + PawnCentreAttack * (attacks & Centre).count
+
+fn knight_rules(sq: Square) -> Score
+    let forward = sq.rank >= 3 and sq.rank <= 5
+    return KnightReach * (knight_attacks(sq).count - 6) + (forward ? KnightForward : 0) + (sq.rank == 0 ? Undeveloped : 0)
+
+fn bishop_rules(sq: Square) -> Score
+    return BishopReach * (bishop_reach(sq).count - 9) + (sq in LongDiagonals ? LongDiagonal : 0) + (sq.rank == 0 ? Undeveloped : 0)
+
+fn rook_rules(sq: Square) -> Score
+    return sq.rank == 6 ? RookSeventh : 0
+
+fn queen_rules(sq: Square) -> Score
+    return QueenReach * ((bishop_reach(sq) | rook_reach(sq)).count - 23)
+
+fn king_rules(sq: Square) -> Score
+    return KingRank[sq.rank] + KingFile[sq.file] + KingRing[centre_ring(sq)]
+
+fn rules(kind: Kind, sq: Square) -> Score
+    match kind
+        Pawn: return pawn_rules(sq)
+        Knight: return knight_rules(sq)
+        Bishop: return bishop_rules(sq)
+        Rook: return rook_rules(sq)
+        Queen: return queen_rules(sq)
+    return king_rules(sq)
+
+init
+    for kind in Pawn..King + 1
+        let phase = phase_score(PhaseWeight[kind])
+        for sq in 0..64
+            let white = MaterialScore[kind] + rules(kind as Kind, sq)
+            placement[Piece.of(White, kind as Kind) << 6 | sq] = phase + white
+            placement[Piece.of(Black, kind as Kind) << 6 | sq ^ 56] = phase - white

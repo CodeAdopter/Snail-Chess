@@ -1,0 +1,39 @@
+use score
+
+const PhaseWeight = [0, 0, 1, 1, 3, 6, 0]
+const MaterialScore = [S(0, 0), S(100, 100), S(320, 320), S(330, 330), S(500, 500), S(900, 900), S(0, 0)]
+
+const PawnRank = [S(0, 0), S(0, 0), S(0, 0), S(5, 5), S(10, 10), S(15, 20), S(25, 30), S(0, 0)]
+const PawnCentre = S(15, 0)
+const PawnCentreAttack = S(5, 0)
+
+const Undeveloped = S(-10, 0)
+const KnightReach = S(8, 6)
+const KnightForward = S(10, 0)
+const BishopReach = S(4, 3)
+const LongDiagonal = S(8, 0)
+const RookSeventh = S(20, 10)
+const QueenReach = S(0, 3)
+
+const KingRank = [S(0, 0), S(-15, 0), S(-35, 0), S(-50, 0), S(-60, 0), S(-60, 0), S(-60, 0), S(-60, 0)]
+const KingFile = [S(5, 0), S(20, 0), S(10, 0), S(-20, 0), S(0, 0), S(-15, 0), S(20, 0), S(10, 0)]
+const KingRing = [S(0, 30), S(0, 15), S(0, 0), S(0, -30)]
+
+const PassedRank = [S(0, 0), S(0, 10), S(0, 15), S(5, 25), S(15, 45), S(35, 80), S(60, 130), S(0, 0)]
+const IsolatedPawn = S(-5, -15)
+const DoubledPawn = S(-10, -20)
+const SupportedPawn = S(8, 6)
+const PhalanxPawn = S(5, 5)
+
+const PawnThreat = S(45, 25)
+const RookOpenFile = S(25, 8)
+const RookHalfOpenFile = S(10, 6)
+const KingShield = S(12, 0)
+
+const BishopPair = S(30, 50)
+const Tempo = 10
+
+const EndgamePhase = 8
+const MopEdge = 10
+const MopCorner = 6
+const MopKings = 4

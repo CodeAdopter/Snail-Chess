@@ -1,0 +1,42 @@
+use pawns
+use weights
+
+const PawnCacheBits = 12
+const PawnCacheSize = 1 << PawnCacheBits
+const PawnMixWhite: u64 = 0x9E3779B97F4A7C15
+const PawnMixBlack: u64 = 0xC2B2AE3D27D4EB4F
+
+struct PawnEntry
+    white: Bitboard
+    black: Bitboard
+    passed: Bitboard
+    score: i32
+    white_files: u8
+    black_files: u8
+
+@inline
+fn pawn_slot(white: Bitboard, black: Bitboard) -> int
+    return (white * PawnMixWhite ^ black * PawnMixBlack) >> 64 - PawnCacheBits
+
+fn side_structure[us: Side](ours: Bitboard, files: Bitboard, behind: Bitboard, stoppers: Bitboard) -> (Score, Bitboard)
+    let passed = ours & ~(stoppers | beside(stoppers) | behind)
+    var score = IsolatedPawn * (ours & ~beside(files)).count + DoubledPawn * (ours & behind).count
+    score += SupportedPawn * (ours & (capture_west(ours) | capture_east(ours))).count + PhalanxPawn * (ours & beside(ours)).count
+    for sq in passed
+        score += PassedRank[relative_rank(sq)]
+    return score, passed
+
+@noinline
+fn fill_pawn_entry(entry: *PawnEntry, white: Bitboard, black: Bitboard)
+    let white_up = north_fill(white)
+    let white_down = south_fill(white)
+    let black_up = north_fill(black)
+    let black_down = south_fill(black)
+    let (white_score, white_passed) = side_structure[White](white, white_up | white_down, white_down >> 8, black_down >> 8)
+    let (black_score, black_passed) = side_structure[Black](black, black_up | black_down, black_up << 8, white_up << 8)
+    entry.white = white
+    entry.black = black
+    entry.passed = white_passed | black_passed
+    entry.score = (white_score - black_score) as i32
+    entry.white_files = (white_up | white_down) as u8
+    entry.black_files = (black_up | black_down) as u8

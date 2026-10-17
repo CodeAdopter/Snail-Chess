@@ -2,9 +2,9 @@ use eval
 use config
 
 @inline
-fn reverse_futility[us: Side](board: *Board, depth: int, beta: int) -> bool
+fn reverse_futility[us: Side](board: *Board, depth: int, beta: int, stand_pat: int) -> bool
     if depth > ReverseFutilityDepth or abs(beta) >= MateBound: return false
-    return evaluate(board) - ReverseFutilityMargin * depth >= beta and not board.in_check()
+    return stand_pat - ReverseFutilityMargin * depth >= beta and not board.in_check()
 
 @inline
 fn quiets_futile[us: Side](board: *Board, depth: int, stand_pat: int, alpha: int, best_score: int, ref score: int) -> bool

@@ -1,7 +1,7 @@
 use board
 use castling
 use keys
-use material
+use placement
 
 extend Board
     @inline
@@ -15,7 +15,7 @@ extend Board
         elif kind == Capture
             let victim = squares[to]
             next.captured = victim
-            clear_bits(victim, to.bit)
+            clear_bits(victim, to)
             relocate(from, to)
         else
             make_special(move, next)
@@ -86,13 +86,13 @@ extend Board
             EnPassant
                 let victim = to - push_step()
                 relocate(from, to)
-                clear_bits(Piece.of(us.other, Pawn), victim.bit)
+                clear_bits(Piece.of(us.other, Pawn), victim)
                 squares[victim] = NoPiece
             else
                 if move.is_capture
                     let victim = squares[to]
                     next.captured = victim
-                    clear_bits(victim, to.bit)
+                    clear_bits(victim, to)
                 lift(from)
                 put(Piece.of(us, move.promotion), to)
 
@@ -132,6 +132,7 @@ extend Board
         bb[us] ^= path
         squares[to] = piece
         squares[from] = NoPiece
+        score += placed(piece, to) - placed(piece, from)
 
     @inline
     fn put(piece: Piece, sq: Square)
@@ -139,18 +140,19 @@ extend Board
         bb[piece] |= bit
         bb[piece & 1] |= bit
         squares[sq] = piece
-        material += white_pov[piece]
+        score += placed(piece, sq)
 
     @inline
     fn lift(sq: Square)
-        clear_bits(squares[sq], sq.bit)
+        clear_bits(squares[sq], sq)
         squares[sq] = NoPiece
 
     @inline
-    fn clear_bits(piece: Piece, bit: Bitboard)
+    fn clear_bits(piece: Piece, sq: Square)
+        let bit = sq.bit
         bb[piece] ^= bit
         bb[piece & 1] ^= bit
-        material -= white_pov[piece]
+        score -= placed(piece, sq)
 
     @nosave
     fn key_after[us: Side](move: Move, current: u64) -> u64

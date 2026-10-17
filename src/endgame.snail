@@ -1,0 +1,51 @@
+use board
+use material
+use weights
+
+const DarkSquares: Bitboard = 0xAA55AA55AA55AA55
+
+fn non_pawn_material(board: *Board, side: Side) -> int
+    return board.pieces(side, Knight).count * KnightValue + board.pieces(side, Bishop).count * BishopValue + board.pieces(side, Rook).count * RookValue + board.pieces(side, Queen).count * QueenValue
+
+fn centre_distance(sq: Square) -> int
+    return (abs(2 * sq.file - 7) + abs(2 * sq.rank - 7) >> 1) - 1
+
+fn king_distance(a: Square, b: Square) -> int
+    return max(abs(a.file - b.file), abs(a.rank - b.rank))
+
+fn mating_corner_distance(sq: Square, dark: bool) -> int
+    let file = dark ? sq.file : 7 - sq.file
+    return min(file + sq.rank, 14 - file - sq.rank)
+
+fn mop_up(board: *Board, strong: Side, strong_material: int) -> int
+    let weak_king = board.king_square(strong.other)
+    let bishops = board.pieces(strong, Bishop)
+    let kings = MopKings * (7 - king_distance(board.king_square(strong), weak_king))
+    if strong_material == KnightValue + BishopValue and bishops and board.pieces(strong, Knight)
+        return kings + MopCorner * (14 - mating_corner_distance(weak_king, bishops & DarkSquares != 0))
+    return kings + MopEdge * centre_distance(weak_king)
+
+fn opposite_bishops(board: *Board) -> bool
+    let white = board.pieces(White, Bishop)
+    let black = board.pieces(Black, Bishop)
+    if white.many or black.many or not white or not black: return false
+    return (white & DarkSquares != 0) != (black & DarkSquares != 0)
+
+@noinline
+fn scale_endgame(board: *Board, score: int) -> int
+    if score == 0: return 0
+    let strong = score > 0 ? White : Black
+    let weak = strong.other
+    let strong_material = non_pawn_material(board, strong)
+    let weak_material = non_pawn_material(board, weak)
+
+    if not board.pieces(strong, Pawn)
+        if strong_material - weak_material <= BishopValue: return score / (strong_material < RookValue ? 16 : 4)
+        if strong_material == 2 * KnightValue and not weak_material: return score / 16
+
+    if not board.pieces(weak, Pawn) and strong_material - weak_material >= RookValue
+        let bonus = mop_up(board, strong, strong_material)
+        return score + (strong == White ? bonus : -bonus)
+
+    if strong_material == BishopValue and weak_material == BishopValue and opposite_bishops(board): return score / 2
+    return score

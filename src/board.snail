@@ -1,5 +1,6 @@
 use attacks
 use pawns
+use score
 
 const HistoryCapacity = 2048
 const FiftyMovePlies = 100
@@ -17,7 +18,7 @@ struct Board
     side: Side
     ply: int
     key: u64
-    material: int
+    score: Score
     history: [HistoryCapacity]PlyState
     past_keys: [FiftyMovePlies]u64
     past_count: int

@@ -35,7 +35,7 @@ extend Search
             var (skipped, move_score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
             if not skipped
                 board.make(move)
-                move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+                move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1, null)
                 board.unmake(move)
                 if stop_requested: return true
 
@@ -123,7 +123,7 @@ extend Search
                     move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity)
                 else
                     board.make(move)
-                    move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+                    move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1, null)
                     board.unmake(move)
                 if stop_requested: return true
 

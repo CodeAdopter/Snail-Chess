@@ -1,0 +1,26 @@
+const PhaseBits = 5
+const MaxPhase = 1 << PhaseBits
+
+type Score = i64
+    @inline
+    fn mg() -> int
+        return self as i16
+
+    @inline
+    fn eg() -> int
+        return (self + 0x8000 >> 16) as i16
+
+    @inline
+    fn phase() -> int
+        return (self + 0x80008000 >> 32) as int
+
+    @inline
+    fn blend() -> int
+        let p = min(self.phase, MaxPhase)
+        return self.eg + (self.mg - self.eg) * p / MaxPhase
+
+fn S(mg: int, eg: int) -> Score
+    return (mg + (eg as i64 << 16)) as Score
+
+fn phase_score(weight: int) -> Score
+    return (weight as i64 << 32) as Score

@@ -1,14 +1,34 @@
-use board
-use material
+use endgame
+use search
+use pieces
 
 const Infinity = 32000
 const MateValue = 30000
 const MateBound = MateValue - 1000
 const DeltaMargin = 200
 
-@inline
-fn evaluate[us: Side](board: *Board) -> int
-    return us == White ? board.material : -board.material
+extend Search
+    @inline
+    fn pawn_entry(white: Bitboard, black: Bitboard) -> *PawnEntry
+        let entry = &pawn_entries[pawn_slot(white, black)]
+        if entry.white != white or entry.black != black: fill_pawn_entry(entry, white, black)
+        return entry
+
+    @inline
+    fn evaluate[us: Side](board: *Board) -> int
+        return evaluate_with(board, pawn_entry(board.pieces(White, Pawn), board.pieces(Black, Pawn)))
+
+    @inline
+    fn evaluate_with[us: Side](board: *Board, entry: *PawnEntry) -> int
+        let white_pawns = board.pieces(White, Pawn)
+        let black_pawns = board.pieces(Black, Pawn)
+        var score = board.score + entry.score as Score + piece_terms(board, entry)
+        if board.pieces(White, Bishop).many: score += BishopPair
+        if board.pieces(Black, Bishop).many: score -= BishopPair
+        var blended = score.blend
+        let phase = score.phase
+        if phase <= EndgamePhase and (not white_pawns or not black_pawns or phase == 2): blended = scale_endgame(board, blended)
+        return (us == White ? blended : -blended) + Tempo
 
 @inline
 fn material_gain(board: *Board, move: Move) -> int

@@ -32,5 +32,25 @@ fn capture_east[us: Side](pawns: Bitboard) -> Bitboard
     return us == White ? (pawns & ~FileH) << 9 : (pawns & ~FileH) >> 7
 
 @inline
+fn north_fill(b: Bitboard) -> Bitboard
+    let a = b | b << 8
+    let c = a | a << 16
+    return c | c << 32
+
+@inline
+fn south_fill(b: Bitboard) -> Bitboard
+    let a = b | b >> 8
+    let c = a | a >> 16
+    return c | c >> 32
+
+@inline
+fn beside(b: Bitboard) -> Bitboard
+    return (b << 1 & ~FileA) | (b >> 1 & ~FileH)
+
+@inline
+fn relative_rank[us: Side](sq: Square) -> int
+    return us == White ? sq.rank : 7 - sq.rank
+
+@inline
 fn enemy_pawn_attacks[us: Side](pawns: Bitboard) -> Bitboard
     return us == White ? (pawns & ~FileA) >> 9 | (pawns & ~FileH) >> 7 : (pawns & ~FileA) << 7 | (pawns & ~FileH) << 9

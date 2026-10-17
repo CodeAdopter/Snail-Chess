@@ -1,8 +1,6 @@
 # Snail Chess
 
-A UCI chess engine written in Snail.
-
-Snail Chess evaluates material only. No piece-square tables, no NNUE.
+An HCE UCI chess engine written in Snail.
 
 ## Versions
 

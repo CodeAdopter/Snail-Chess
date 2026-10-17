@@ -5,7 +5,7 @@ use make
 
 extend Search
     @nosave
-    fn quiescence[us: Side](board: *Board, alpha: int, beta: int, ply: int) -> int
+    fn quiescence[us: Side](board: *Board, alpha: int, beta: int, ply: int, structure: *PawnEntry) -> int
         if stop_requested: return 0
         if node_count & 8191 == 0 and reached_limit()
             stop_requested = true
@@ -13,7 +13,8 @@ extend Search
 
         node_count += 1
 
-        let stand_pat = evaluate(board)
+        let entry = structure != null ? structure : pawn_entry(board.pieces(White, Pawn), board.pieces(Black, Pawn))
+        let stand_pat = evaluate_with(board, entry)
         if stand_pat >= beta: return stand_pat
         if stand_pat > alpha: alpha = stand_pat
         if ply >= MaximumPly - 1: return stand_pat
@@ -35,7 +36,7 @@ extend Search
             if board.in_check()
                 board.unmake(move)
                 continue
-            let score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+            let score = -quiescence[us.other](board, -beta, -alpha, ply + 1, entry)
             board.unmake(move)
             if stop_requested: return 0
 

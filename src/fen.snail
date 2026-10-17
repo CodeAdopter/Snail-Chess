@@ -34,7 +34,7 @@ extend Board
 
         zero(&bb)
         zero(&squares)
-        material = 0
+        score = 0
         ply = 0
         past_count = 0
         zero(&history[0])

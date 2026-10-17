@@ -8,17 +8,13 @@ const QueenValue = 900
 
 const KindValue = [0, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, 0]
 
-var white_pov: [16]int
-
 var capture_gain: [16]int
 
 var kind_gain: [16]int
 
 init
     for code in 0..PieceLimit
-        let value = KindValue[code >> 1]
-        white_pov[code] = code & 1 == 0 ? value : -value
-        capture_gain[code] = value
+        capture_gain[code] = KindValue[code >> 1]
     kind_gain[EnPassant] = PawnValue
     for p in 0..4
         let over_pawn = KindValue[Knight + p] - PawnValue

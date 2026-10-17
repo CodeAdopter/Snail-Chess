@@ -39,7 +39,7 @@ extend Search
         if node_count & 8191 == 0 and reached_limit()
             stop_requested = true
             return 0
-        if depth <= 0: return quiescence(board, alpha, beta, ply)
+        if depth <= 0: return quiescence(board, alpha, beta, ply, null)
 
         node_count += 1
         main_node_count += 1
@@ -58,14 +58,15 @@ extend Search
                     if entry.bound & Upper and table_score <= alpha: return table_score
                 if table_move != NoMove: prefetch_child(board, table_move, depth, hash)
 
-        if ply > 0 and reverse_futility(board, depth, beta): return evaluate(board)
+        let stand_pat = evaluate(board)
+        if ply > 0 and reverse_futility(board, depth, beta, stand_pat): return stand_pat
 
-        if ply > 0 and allows_null_move(board, depth, beta)
+        if ply > 0 and allows_null_move(board, depth, beta, stand_pat)
             let score = search_null(board, depth, beta, ply, hash)
             if stop_requested: return 0
             if score >= beta: return score >= MateBound ? beta : score
 
-        let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move)
+        let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move, stand_pat)
         if stopped: return 0
 
         if hash != 0
@@ -74,8 +75,7 @@ extend Search
         return result
 
     @inline
-    fn search_moves[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64, table_move: Move) -> (int, Move, bool)
-        let stand_pat = evaluate(board)
+    fn search_moves[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64, table_move: Move, stand_pat: int) -> (int, Move, bool)
         var best_score = -Infinity
         var best_move = NoMove
         var result = 0
@@ -153,7 +153,7 @@ extend Search
                     score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity)
                 else
                     board.make(move)
-                    score = -quiescence[us.other](board, -beta, -alpha, ply + 1)
+                    score = -quiescence[us.other](board, -beta, -alpha, ply + 1, null)
                     board.unmake(move)
                 if stop_requested: return 0, best_move, true
 

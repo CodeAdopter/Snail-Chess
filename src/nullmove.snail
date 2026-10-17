@@ -21,8 +21,8 @@ extend Board
         return current ^ key_black_to_move ^ key_en_passant[en_passant()]
 
 @inline
-fn allows_null_move[us: Side](board: *Board, depth: int, beta: int) -> bool
-    if depth < NullMoveMinDepth or abs(beta) >= MateBound or evaluate(board) < beta: return false
+fn allows_null_move[us: Side](board: *Board, depth: int, beta: int, stand_pat: int) -> bool
+    if depth < NullMoveMinDepth or abs(beta) >= MateBound or stand_pat < beta: return false
     return board.occupancy(us) != board.pieces(us, Pawn) | board.pieces(us, King) and not board.in_check()
 
 @inline

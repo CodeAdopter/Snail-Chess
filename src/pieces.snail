@@ -1,0 +1,37 @@
+use board
+use structure
+
+var king_shield: [2 * 64]Bitboard
+
+@inline
+fn file_mask(files: u8) -> Bitboard
+    return files as u64 * 0x0101010101010101
+
+@inline
+fn pawn_threats[us: Side](board: *Board) -> int
+    const them = us.other
+    let pawns = board.pieces(us, Pawn)
+    let targets = board.occupancy(them) ^ board.pieces(them, Pawn) ^ board.pieces(them, King)
+    return ((capture_west(pawns) | capture_east(pawns)) & targets).count
+
+@inline
+fn shield_pawns[us: Side](board: *Board) -> int
+    return (board.pieces(us, Pawn) & king_shield[us << 6 | board.king_square(us)]).count
+
+@inline
+fn piece_terms(board: *Board, entry: *PawnEntry) -> Score
+    let white_files = file_mask(entry.white_files)
+    let black_files = file_mask(entry.black_files)
+    let white_rooks = board.pieces(White, Rook) & ~white_files
+    let black_rooks = board.pieces(Black, Rook) & ~black_files
+    let open = (white_rooks & ~black_files).count - (black_rooks & ~white_files).count
+    let half_open = (white_rooks & black_files).count - (black_rooks & white_files).count
+    var score = PawnThreat * (pawn_threats[White](board) - pawn_threats[Black](board))
+    score += KingShield * (shield_pawns[White](board) - shield_pawns[Black](board))
+    return score + RookOpenFile * open + RookHalfOpenFile * half_open
+
+init
+    for sq in 0..64
+        let row = (king_attacks(sq) | (sq as Square).bit) & (0xFF as u64) << (sq & 56)
+        king_shield[sq] = row << 8 | row << 16
+        king_shield[64 | sq] = row >> 8 | row >> 16
