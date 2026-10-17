@@ -60,7 +60,7 @@ fn uci_loop()
     uci.board.load_fen(StartFen)
     uci.threads = SearchThreads.create(DefaultHashMegabytes)
     uci.threads.set_threads(DefaultThreads)
-    var words: [MaxWords]str
+    var words: [MaxWords]str = undefined
 
     loop
         let (line, ok) = read_line()
@@ -140,7 +140,7 @@ fn set_position(board: *Board, line: str, words: *str, count: int) -> bool
     return custom
 
 fn parse_move(board: *Board, text: str) -> Move
-    var moves: [MaxMoves]Move
+    var moves: [MaxMoves]Move = undefined
     let count = legal_moves(board, &moves[0])
     for i in 0..count
         if move_matches(moves[i], text): return moves[i]

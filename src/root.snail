@@ -22,7 +22,7 @@ extend Search
         zero(&killers)
         remember_game(board)
 
-        var root_moves: [MaxMoves]Move
+        var root_moves: [MaxMoves]Move = undefined
         let root_count = legal_moves(board, &root_moves[0])
         pv_move = root_count > 0 ? most_central_move(board, &root_moves[0], root_count) : NoMove
         var line: [MaximumPly]Move

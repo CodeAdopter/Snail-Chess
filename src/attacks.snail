@@ -97,8 +97,8 @@ fn blocker_mask(from: Square, files: []int, ranks: []int) -> Bitboard
     return mask
 
 fn find_magic(mask: Bitboard, shift: int, occupancies: *Bitboard, attacks: *Bitboard, arrangements: int, ref random: SplitMix64) -> u64
-    var stored: [4096]Bitboard
-    var stored_by: [4096]int
+    var stored: [4096]Bitboard = undefined
+    var stored_by: [4096]int = undefined
     zero(&stored_by)
     var attempt = 1
     loop
@@ -118,8 +118,8 @@ fn find_magic(mask: Bitboard, shift: int, occupancies: *Bitboard, attacks: *Bitb
 
 fn build_sliders(entries: []SliderEntry, table: []Bitboard, files: []int, ranks: []int)
     var random = SplitMix64(0x5A6F_6F6D_6965_7321)
-    var occupancies: [4096]Bitboard
-    var attacks: [4096]Bitboard
+    var occupancies: [4096]Bitboard = undefined
+    var attacks: [4096]Bitboard = undefined
     var offset = 0
     for sq in 0..64
         let e = &entries[sq]

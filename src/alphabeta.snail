@@ -1,6 +1,5 @@
 use stages
 use draws
-use futility
 use nullmove
 
 extend Search
@@ -96,7 +95,7 @@ extend Search
                     remember_killer(ply, table_move)
                     return best_score, best_move, false
 
-            let finished = depth == 1 ? frontier_tactical_first(board, stand_pat, ref alpha, beta, ply, ref best_score, ref resume_at, ref result) : tactical_first(board, depth, ref alpha, beta, ply, hash, table_move, ref best_score, ref best_move, ref resume_at, ref result)
+            let finished = depth == 1 ? frontier_tactical_first(board, stand_pat, ref alpha, beta, ply, ref best_score, ref resume_at, ref result) : tactical_first(board, depth, stand_pat, ref alpha, beta, ply, hash, table_move, ref best_score, ref best_move, ref resume_at, ref result)
             if finished: return result, best_move, stop_requested
 
         var killers_searched = 0
