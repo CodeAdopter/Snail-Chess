@@ -12,6 +12,7 @@ struct SearchLimits
     move_time_ms: i64
     max_nodes: i64
     until_stopped: bool
+    soft_time_ms: i64
 
 struct Search
     killers: [MaximumPly * 2]Move
@@ -39,6 +40,10 @@ struct Search
     until_stopped: bool
     stop_requested: bool @volatile
     pv_move: Move
+
+    soft_time_ms: i64
+    root_move_start: i64
+    best_move_nodes: i64
 
     last_node_count: i64
     last_quiescence_nodes: i64

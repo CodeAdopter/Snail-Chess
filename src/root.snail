@@ -1,5 +1,6 @@
 use alphabeta
 use info
+use timing
 
 const SkipSize = [1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4]
 const SkipPhase = [0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 7]
@@ -16,6 +17,7 @@ extend Search
         until_stopped = limits.until_stopped
         start_ms = now_ms()
         time_limit_ms = limits.move_time_ms > 0 ? limits.move_time_ms : i64.max
+        soft_time_ms = limits.soft_time_ms
         node_limit = limits.max_nodes
         zero(&killers)
         remember_game(board)
@@ -31,14 +33,19 @@ extend Search
         let max_depth = root_count == 0 ? 0 : limits.max_depth > 0 ? limits.max_depth : MaximumPly - 1
         var final_score = 0
         var completed = 0
+        var stability = 0
+        var previous_best = NoMove
         let root_hash = table != null ? board.key : 0
 
         for depth in 1..max_depth + 1
             if skips_depth(helper_index, depth): continue
             let hash = depth >= TableMinimumDepth ? root_hash : 0
+            let iteration_start = node_count
+            best_move_nodes = 0
             let score = alpha_beta[board.side](board, depth, -Infinity, Infinity, 0, hash)
             if stop_requested and depth > 1: break
 
+            let previous_score = final_score
             final_score = score
             completed = depth
             line_length = pv_length[0]
@@ -49,6 +56,12 @@ extend Search
 
             if not until_stopped and abs(score) >= MateBound: break
             if reached_limit(): break
+            if soft_time_ms == 0: continue
+            if root_count == 1: break
+
+            stability = pv_move == previous_best ? min(stability + 1, MaxStability) : 0
+            previous_best = pv_move
+            if past_soft_limit(depth, stability, node_count - iteration_start, previous_score, score): break
 
         while until_stopped and not stop_requested
             sleep_ms(1)

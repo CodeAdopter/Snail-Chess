@@ -1,5 +1,5 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.1"
+const EngineVersion = "1.2"
 const EngineAuthor = "Angelo Wolff"
 
 const DefaultHashMegabytes = 64
@@ -10,6 +10,27 @@ const MaxThreads = 256
 const DefaultSearchDepth = 8
 const DefaultBenchDepth = 9
 
-const ExpectedMovesLeft = 20
+const SoftTimeDivisor = 20
 const IncrementDivisor = 2
 const MoveOverheadMs = 30
+const HardTimeMultiple = 4
+const HardTimeDivisor = 3
+const FirstMoveBonusPercent = 52
+
+const StabilityScale = [260, 113, 69, 56, 52, 51, 50, 50]
+const MaxStability = 7
+const EffortMinDepth = 8
+const EffortHighPercent = 96
+const EffortHighScale = 65
+const EffortMediumPercent = 85
+const EffortMediumScale = 85
+const EffortLowPercent = 33
+const EffortLowScale = 135
+const ScoreDropMinDepth = 6
+const ScoreDropMargin = 7
+const ScoreDropSlope = 3
+const ScoreDropMaxScale = 187
+const ScoreShiftMargin = 51
+const ScoreShiftScale = 143
+const SoftScaleFloor = 40
+const SoftScaleCeiling = 300

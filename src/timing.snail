@@ -1,0 +1,34 @@
+use search
+use config
+
+fn allocate_time(clock_ms: i64, increment_ms: i64, moves_to_go: int, first_move: bool) -> SearchLimits
+    let remaining = max(clock_ms - MoveOverheadMs, 1)
+    let share = moves_to_go > 0 ? moves_to_go + 1 : SoftTimeDivisor
+    let soft = clamp(remaining / share + increment_ms / IncrementDivisor, 1, remaining)
+    let hard_cap = moves_to_go == 1 ? remaining * 3 / 4 : remaining / HardTimeDivisor
+    let hard = clamp(min(soft * HardTimeMultiple, hard_cap), soft, remaining)
+    let target = first_move ? soft * (100 + FirstMoveBonusPercent) / 100 : soft
+    return SearchLimits(move_time_ms: hard, soft_time_ms: min(target, hard))
+
+fn effort_scale(depth: int, effort_percent: int) -> int
+    if depth < EffortMinDepth: return 100
+    if effort_percent >= EffortHighPercent: return EffortHighScale
+    if effort_percent >= EffortMediumPercent: return EffortMediumScale
+    if effort_percent <= EffortLowPercent: return EffortLowScale
+    return 100
+
+fn score_drop_scale(depth: int, previous_score: int, score: int) -> int
+    if depth < ScoreDropMinDepth: return 100
+    return clamp(100 + (previous_score - score - ScoreDropMargin) * ScoreDropSlope, 100, ScoreDropMaxScale)
+
+fn score_shift_scale(depth: int, previous_score: int, score: int) -> int
+    return depth >= ScoreDropMinDepth and abs(score - previous_score) >= ScoreShiftMargin ? ScoreShiftScale : 100
+
+fn soft_time_scale(depth: int, stability: int, effort_percent: int, previous_score: int, score: int) -> int
+    let scale = StabilityScale[stability] * effort_scale(depth, effort_percent) * score_drop_scale(depth, previous_score, score) / 10000 * score_shift_scale(depth, previous_score, score) / 100
+    return clamp(scale, SoftScaleFloor, SoftScaleCeiling)
+
+extend Search
+    fn past_soft_limit(depth: int, stability: int, iteration_nodes: i64, previous_score: int, score: int) -> bool
+        let effort = (100 * best_move_nodes / max(iteration_nodes, 1)) as int
+        return elapsed_ms() >= soft_time_ms * soft_time_scale(depth, stability, effort, previous_score, score) / 100

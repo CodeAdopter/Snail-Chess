@@ -10,6 +10,8 @@ struct Uci
     limits: SearchLimits
     search_thread: u64
     searching: bool
+    searched_this_game: bool
+    custom_position: bool
 
     fn stop_search()
         if not searching: return
@@ -79,15 +81,19 @@ fn uci_loop()
             uci.stop_search()
             uci.board.load_fen(StartFen)
             uci.threads.clear_hash()
+            uci.searched_this_game = false
+            uci.custom_position = false
         elif command == "setoption"
             uci.stop_search()
             set_option(uci.threads, &words[0], count)
         elif command == "position"
             uci.stop_search()
-            set_position(uci.board, line, &words[0], count)
+            uci.custom_position = set_position(uci.board, line, &words[0], count)
         elif command == "go"
             uci.stop_search()
-            if parse_go(uci, &words[0], count): uci.start_search()
+            if parse_go(uci, &words[0], count)
+                uci.searched_this_game = true
+                uci.start_search()
         elif command == "stop"
             uci.threads.stop()
         elif command == "bench"
@@ -106,28 +112,32 @@ fn set_option(threads: *SearchThreads, words: *str, count: int)
     if name == "Hash" or name == "hash": threads.set_hash(clamp(value, 0, MaxHashMegabytes))
     elif name == "Threads" or name == "threads": threads.set_threads(clamp(value, 1, MaxThreads))
 
-fn set_position(board: *Board, line: str, words: *str, count: int)
+fn set_position(board: *Board, line: str, words: *str, count: int) -> bool
     var next = 2
+    var custom = false
     if count > 1 and words[1] == "startpos"
         board.load_fen(StartFen)
     elif count > 1 and words[1] == "fen"
         while next < count and words[next] != "moves"
             next += 1
-        if next == 2: return
+        if next == 2: return false
         let start = words[2].ptr - line.ptr
         let last = words[next - 1]
         let end = last.ptr - line.ptr + last.len
-        if not board.load_fen(line[start..end]): return
+        if not board.load_fen(line[start..end]): return false
+        custom = true
     else
-        return
+        return false
 
     if next < count and words[next] == "moves"
         for i in next + 1..count
             let move = parse_move(board, words[i])
             if move == NoMove: break
             board.play(move)
+            custom = true
 
     board.discard_history()
+    return custom
 
 fn parse_move(board: *Board, text: str) -> Move
     var moves: [MaxMoves]Move
@@ -156,6 +166,7 @@ fn parse_go(uci: *Uci, words: *str, count: int) -> bool
     var move_time: i64 = 0
     var nodes: i64 = 0
     var depth = 0
+    var moves_to_go = 0
     var infinite = false
 
     for i in 1..count
@@ -169,6 +180,7 @@ fn parse_go(uci: *Uci, words: *str, count: int) -> bool
         elif word == "btime": black_time = value
         elif word == "winc": white_increment = value
         elif word == "binc": black_increment = value
+        elif word == "movestogo": moves_to_go = value
         elif word == "perft"
             let start = now_ms()
             let total = perft(uci.board, value, false)
@@ -189,8 +201,8 @@ fn parse_go(uci: *Uci, words: *str, count: int) -> bool
         let white = uci.board.side == White
         let remaining = white ? white_time : black_time
         let increment = white ? white_increment : black_increment
-        let budget = remaining / ExpectedMovesLeft + increment / IncrementDivisor
-        limits.move_time_ms = clamp(budget, 1, max(1, remaining - MoveOverheadMs))
+        let first_move = not uci.searched_this_game and uci.custom_position
+        limits = allocate_time(remaining, increment, moves_to_go, first_move)
     else
         limits.max_depth = DefaultSearchDepth
     uci.limits = limits

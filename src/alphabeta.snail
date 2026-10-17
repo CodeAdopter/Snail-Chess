@@ -127,6 +127,7 @@ extend Search
             if depth == 1: (skipped, score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
             if not skipped
                 if depth > 1
+                    if ply == 0: root_move_start = node_count
                     score = search_child(board, move, depth, alpha, beta, ply, hash)
                 else
                     board.make(move)
@@ -137,7 +138,9 @@ extend Search
             if score > best_score
                 best_score = score
                 best_move = move
-                if ply == 0: pv_move = move
+                if ply == 0
+                    pv_move = move
+                    best_move_nodes = node_count - root_move_start
             if score > alpha
                 alpha = score
                 update_pv(ply, move, depth == 1)
