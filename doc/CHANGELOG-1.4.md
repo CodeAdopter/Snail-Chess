@@ -1,12 +1,14 @@
 # Snail Chess 1.4
 
-| Rating | Speed | Size | Snail Rating |
+Commit 0a403d3
+
+| Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~1788 | 35.8 Mnps | 48 KB | ~2569 |
 
 ## Engine
 
-| Change | Rating | SPRT | Speed | Size |
+| Change | Rating | SPRT | Search Speed | Size |
 |---|---|---|---|---|
 | Null-move pruning | +165 | +160 ± 31 | -19% | +2 KB |
 | Bench depth 12 | ±0 | - | +9% | ±0 KB |

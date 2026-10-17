@@ -1,12 +1,14 @@
 # Snail Chess 1.5
 
-| Rating | Speed | Size | Snail Rating |
+Commit 3badedd
+
+| Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~1812 | 34.6 Mnps | 49 KB | ~2587 |
 
 ## Engine
 
-| Change | Rating | SPRT | Speed | Size |
+| Change | Rating | SPRT | Search Speed | Size |
 |---|---|---|---|---|
 | Futility pruning | +24 | +23 ± 12 | -3% | +0.5 KB |
 
