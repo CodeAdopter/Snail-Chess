@@ -8,11 +8,16 @@ Snail Chess evaluates material only. No piece-square tables, no NNUE.
 
 | Version | Rating | Speed | Size | Snail Rating |
 |---|---|---|---|---|
-| 1.0.0 | ~1340 | 29.6 Mnps | 298 KB | ~1935 |
+| 1.0.0 | ~1340 | 30.3 Mnps | 46 KB | ~2102 |
 
-Snail Rating = Rating + 100 × log2(Mnps) + 60 × log2(1 MB / Size)
+$$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\frac{1\ \text{MB}}{\text{Size}}\right)$$
 
-Every doubling of speed adds 100, and every halving of the executable adds 60.
+Start with the engine's Elo, then:
+
+- **+100** for every doubling of speed above 1 Mnps
+- **+60** for every halving of size below 1 MB
+
+Slower or bigger engines lose points at the same rates.
 
 ## Snail Ratings List
 
@@ -57,9 +62,13 @@ Every doubling of speed adds 100, and every halving of the executable adds 60.
 | 37 | Stash 14 | 2059 | 9.14 Mnps | 437 KB | 2452 |
 | 38 | Stash 12 | 1883 | 11.38 Mnps | 430 KB | 2309 |
 | 39 | MinimalChess 0.6 | 2439 | 1.66 Mnps | 19 MB | 2259 |
-| 40 | Stash 10 | 1620* | 11.26 Mnps | 425 KB | 2045 |
-| 41 | **Snail Chess 1.0.0** | ~1340 | 29.57 Mnps | 298 KB | **~1935** |
+| 40 | **Snail Chess 1.0.0** | ~1340 | 30.27 Mnps | 46 KB | **~2102** |
+| 41 | Stash 10 | 1620* | 11.26 Mnps | 425 KB | 2045 |
 | 42 | Stash 8 | 1090* | 7.74 Mnps | 394 KB | 1468 |
+
+Weights are based on my personal preference, and engines were picked by hand. Speed comes from each engine's own bench, or a timed search if it doesn't have one. Ratings are from CCRL Blitz, unless marked with * or ~, which means they're estimates.
+
+Want your engine to join the snail race? Open an issue or discussion on GitHub with a link to a release and let me know! 🐌
 
 ## License
 
