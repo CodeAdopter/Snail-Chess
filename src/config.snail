@@ -1,5 +1,5 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.5"
+const EngineVersion = "1.6"
 const EngineAuthor = "Angelo Wolff"
 
 const DefaultHashMegabytes = 64
