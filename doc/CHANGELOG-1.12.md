@@ -1,5 +1,7 @@
 # Snail Chess 1.12
 
+Commit 98fefd8
+
 | Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~2886 | 26.8 Mnps | 52 KB | ~3618 |

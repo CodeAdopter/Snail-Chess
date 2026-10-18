@@ -16,6 +16,9 @@ An HCE UCI chess engine written in Snail.
 | [1.7](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.7) | ~2648 | 28.6 Mnps | 52 KB | ~3390 |
 | [1.8](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.8) | ~2658 | 29.5 Mnps | 50 KB | ~3408 |
 | [1.9](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.9) | ~2657 | 29.7 Mnps | 52 KB | ~3404 |
+| [1.10](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.10) | ~2735 | 26.9 Mnps | 52 KB | ~3468 |
+| [1.11](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.11) | ~2789 | 25.7 Mnps | 53 KB | ~3514 |
+| [1.12](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.12) | ~2886 | 26.8 Mnps | 52 KB | ~3618 |
 
 Start with the engine's Elo, then:
 
@@ -37,30 +40,30 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 | 5 | 4k.c 9.0 | 3085 | 3.01 Mnps | 4 KB | 3728 |
 | 6 | 4ku 5.1 | 3058 | 3.15 Mnps | 4 KB | 3704 |
 | 7 | Stash 37.0 | 3417 | 3.73 Mnps | 541 KB | 3662 |
-| 8 | Berserk 14 | 3739 | 2.85 Mnps | 25 MB | 3610 |
-| 9 | Koivisto 9.0 | 3632 | 4.29 Mnps | 15 MB | 3608 |
-| 10 | Weiss 2.0 | 3319 | 4.32 Mnps | 438 KB | 3604 |
-| 11 | Halogen 16.0.0 | 3721 | 2.54 Mnps | 21 MB | 3591 |
-| 12 | RubiChess 20240817 | 3692 | 2.69 Mnps | 21 MB | 3570 |
-| 13 | Stormphrax 5.0.0 | 3616 | 2.70 Mnps | 9.7 MB | 3563 |
-| 14 | Obsidian 16.0 | 3747 | 2.11 Mnps | 31 MB | 3558 |
-| 15 | Caissa 2.0 | 3765 | 2.82 Mnps | 76 MB | 3540 |
-| 16 | PlentyChess 8.0.0 | 3774 | 1.93 Mnps | 51 MB | 3528 |
-| 17 | Alexandria 9.1.0 | 3745* | 1.92 Mnps | 39 MB | 3522 |
-| 18 | pawnocchio 2.0.1 | 3757 | 2.11 Mnps | 67 MB | 3501 |
-| 19 | Stockfish 19 | 3793 | 1.82 Mnps | 98 MB | 3482 |
-| 20 | Reckless 0.9.0 | 3767 | 1.57 Mnps | 62 MB | 3475 |
-| 21 | Stockfish 17.1 | 3771 | 1.67 Mnps | 76 MB | 3470 |
-| 22 | Clockwork 20261010 | 3451* | 2.35 Mnps | 3.4 MB | 3469 |
-| 23 | Zoomies 5.2 | 3600* | 2.23 Mnps | 18 MB | 3464 |
-| 24 | Integral 8 | 3754 | 1.53 Mnps | 62 MB | 3458 |
-| 25 | Stockfish 18 | 3772 | 1.68 Mnps | 109 MB | 3441 |
-| 26 | Stormphrax 8.0.0 | 3746 | 1.31 Mnps | 54 MB | 3439 |
-| 27 | Hobbes 3.0 | 3744 | 1.43 Mnps | 63 MB | 3438 |
-| 28 | Arasan 26.1 | 3658* | 1.47 Mnps | 25 MB | 3435 |
-| 29 | Viridithas 20.0.0 | 3748 | 1.08 Mnps | 54 MB | 3414 |
-| 30 | Stash 26 | 3000* | 6.59 Mnps | 200 KB | 3414 |
-| 31 | **Snail Chess 1.9** | ~2657 | 29.7 Mnps | 52 KB | **~3404** |
+| 8 | **Snail Chess 1.12** | ~2886 | 26.8 Mnps | 52 KB | **~3618** |
+| 9 | Berserk 14 | 3739 | 2.85 Mnps | 25 MB | 3610 |
+| 10 | Koivisto 9.0 | 3632 | 4.29 Mnps | 15 MB | 3608 |
+| 11 | Weiss 2.0 | 3319 | 4.32 Mnps | 438 KB | 3604 |
+| 12 | Halogen 16.0.0 | 3721 | 2.54 Mnps | 21 MB | 3591 |
+| 13 | RubiChess 20240817 | 3692 | 2.69 Mnps | 21 MB | 3570 |
+| 14 | Stormphrax 5.0.0 | 3616 | 2.70 Mnps | 9.7 MB | 3563 |
+| 15 | Obsidian 16.0 | 3747 | 2.11 Mnps | 31 MB | 3558 |
+| 16 | Caissa 2.0 | 3765 | 2.82 Mnps | 76 MB | 3540 |
+| 17 | PlentyChess 8.0.0 | 3774 | 1.93 Mnps | 51 MB | 3528 |
+| 18 | Alexandria 9.1.0 | 3745* | 1.92 Mnps | 39 MB | 3522 |
+| 19 | pawnocchio 2.0.1 | 3757 | 2.11 Mnps | 67 MB | 3501 |
+| 20 | Stockfish 19 | 3793 | 1.82 Mnps | 98 MB | 3482 |
+| 21 | Reckless 0.9.0 | 3767 | 1.57 Mnps | 62 MB | 3475 |
+| 22 | Stockfish 17.1 | 3771 | 1.67 Mnps | 76 MB | 3470 |
+| 23 | Clockwork 20261010 | 3451* | 2.35 Mnps | 3.4 MB | 3469 |
+| 24 | Zoomies 5.2 | 3600* | 2.23 Mnps | 18 MB | 3464 |
+| 25 | Integral 8 | 3754 | 1.53 Mnps | 62 MB | 3458 |
+| 26 | Stockfish 18 | 3772 | 1.68 Mnps | 109 MB | 3441 |
+| 27 | Stormphrax 8.0.0 | 3746 | 1.31 Mnps | 54 MB | 3439 |
+| 28 | Hobbes 3.0 | 3744 | 1.43 Mnps | 63 MB | 3438 |
+| 29 | Arasan 26.1 | 3658* | 1.47 Mnps | 25 MB | 3435 |
+| 30 | Viridithas 20.0.0 | 3748 | 1.08 Mnps | 54 MB | 3414 |
+| 31 | Stash 26 | 3000* | 6.59 Mnps | 200 KB | 3414 |
 | 32 | Leorik 3.2 | 3492 | 2.75 Mnps | 17 MB | 3391 |
 | 33 | Seer 2.8.0 | 3640 | 2.25 Mnps | 78 MB | 3380 |
 | 34 | Lizard 10.2 | 3580 | 1.15 Mnps | 18 MB | 3348 |
