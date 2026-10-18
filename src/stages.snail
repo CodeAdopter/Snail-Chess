@@ -2,6 +2,7 @@ use quiescence
 use movegen
 use legality
 use futility
+use history
 
 @inline
 fn child_returns_stand_pat[us: Side](board: *Board, move: Move, stand_pat: int, alpha: int, beta: int, ply: int) -> (bool, int)
@@ -134,7 +135,7 @@ extend Search
                 alpha = move_score
                 update_pv(ply, move, depth == 1)
             if alpha >= beta
-                remember_killer(ply, move)
+                reward_quiet(ply, depth, move)
                 score = best_score
                 return true
 

@@ -1,0 +1,39 @@
+use ordering
+use config
+
+@inline
+fn history_bonus(depth: int) -> int
+    return min(depth * depth, HistoryBonusCap)
+
+extend Search
+    @inline
+    fn history_index[us: Side](move: Move) -> int
+        return (us as int) << 12 | (move.code & 4095) as int
+
+    @inline
+    fn update_history[us: Side](move: Move, bonus: int)
+        let i = history_index(move)
+        quiet_history[i] += bonus - quiet_history[i] * abs(bonus) / HistoryLimit
+
+    @inline
+    fn reward_quiet[us: Side](ply: int, depth: int, move: Move)
+        remember_killer(ply, move)
+        update_history(move, history_bonus(depth))
+
+    fn punish_quiets[us: Side](moves: *Move, count: int, depth: int)
+        let malus = -history_bonus(depth)
+        for i in 0..count
+            if moves[i].code < FirstTactical: update_history(moves[i], malus)
+
+    fn sort_by_history[us: Side](moves: *Move, count: int)
+        var keys: [MaxMoves]int = undefined
+        for i in 0..count
+            let move = moves[i]
+            let key = quiet_history[history_index(move)]
+            var j = i - 1
+            while j >= 0 and keys[j] < key
+                moves[j + 1] = moves[j]
+                keys[j + 1] = keys[j]
+                j -= 1
+            moves[j + 1] = move
+            keys[j + 1] = key
