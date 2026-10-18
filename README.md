@@ -14,6 +14,8 @@ An HCE UCI chess engine written in Snail.
 | [1.5](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.5) | ~1812 | 34.6 Mnps | 49 KB | ~2587 |
 | [1.6](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.6) | ~1773 | 33.9 Mnps | 49 KB | ~2545 |
 | [1.7](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.7) | ~2648 | 28.6 Mnps | 52 KB | ~3390 |
+| [1.8](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.8) | ~2658 | 29.5 Mnps | 50 KB | ~3408 |
+| [1.9](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.9) | ~2657 | 29.7 Mnps | 52 KB | ~3404 |
 
 Start with the engine's Elo, then:
 
@@ -58,8 +60,8 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 | 28 | Arasan 26.1 | 3658* | 1.47 Mnps | 25 MB | 3435 |
 | 29 | Viridithas 20.0.0 | 3748 | 1.08 Mnps | 54 MB | 3414 |
 | 30 | Stash 26 | 3000* | 6.59 Mnps | 200 KB | 3414 |
-| 31 | Leorik 3.2 | 3492 | 2.75 Mnps | 17 MB | 3391 |
-| 32 | **Snail Chess 1.7** | ~2648 | 28.6 Mnps | 52 KB | **~3390** |
+| 31 | **Snail Chess 1.9** | ~2657 | 29.7 Mnps | 52 KB | **~3404** |
+| 32 | Leorik 3.2 | 3492 | 2.75 Mnps | 17 MB | 3391 |
 | 33 | Seer 2.8.0 | 3640 | 2.25 Mnps | 78 MB | 3380 |
 | 34 | Lizard 10.2 | 3580 | 1.15 Mnps | 18 MB | 3348 |
 | 35 | Igel 3.7.0 | 3694 | 1.35 Mnps | 107 MB | 3332 |
