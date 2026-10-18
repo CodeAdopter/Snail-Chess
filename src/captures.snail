@@ -16,11 +16,14 @@ fn pseudo_legal_captures[us: Side](board: *Board, buffer: *Move, minimum_gain: i
     let east = capture_east(pawns)
     let promotion = promotion_rank()
 
-    sink.add_pawn_moves[WriteAll](west & victims & ~promotion, west_step(), Capture)
-    sink.add_pawn_moves[WriteAll](east & victims & ~promotion, east_step(), Capture)
     sink.add_pawn_moves[WriteAll](west & any_victim & promotion, west_step(), CapturePromoteQueen)
     sink.add_pawn_moves[WriteAll](east & any_victim & promotion, east_step(), CapturePromoteQueen)
-    sink.add_pawn_moves[WriteAll](push(pawns) & ~occupied & promotion, push_step(), PromoteQueen)
+
+    let king = board.king_square(us)
+    sink.add_piece_moves[WriteAll](king, king_attacks(king) & victims, Capture)
+
+    sink.add_pawn_moves[WriteAll](west & victims & ~promotion, west_step(), Capture)
+    sink.add_pawn_moves[WriteAll](east & victims & ~promotion, east_step(), Capture)
 
     let en_passant = board.en_passant()
     if en_passant != Square.none and minimum_gain < PawnValue
@@ -36,9 +39,27 @@ fn pseudo_legal_captures[us: Side](board: *Board, buffer: *Move, minimum_gain: i
     for from in board.pieces(us, Queen)
         sink.add_piece_moves[WriteAll](from, queen_attacks(from, occupied) & victims, Capture)
 
-    let king = board.king_square(us)
-    sink.add_piece_moves[WriteAll](king, king_attacks(king) & victims, Capture)
+    sink.add_pawn_moves[WriteAll](push(pawns) & ~occupied & promotion, push_step(), PromoteQueen)
     return sink.written
+
+@inline
+fn generation_rank(board: *Board, move: Move) -> int
+    if move.kind == CapturePromoteQueen: return 1
+    if move.kind == PromoteQueen: return 2
+    if move.kind == EnPassant: return 3
+    let attacker = board.squares[move.from].kind
+    return attacker == Pawn ? 0 : attacker == King ? 5 : 4
+
+@noinline
+fn restore_generation_order(board: *Board, moves: *Move, count: int)
+    var held: [MaxMoves]Move = undefined
+    var n = 0
+    for rank in 0..6
+        for i in 0..count
+            if generation_rank(board, moves[i]) == rank
+                held[n] = moves[i]
+                n += 1
+    copy(moves, &held[0], count)
 
 fn victims_worth_more_than[us: Side](board: *Board, minimum_gain: int) -> Bitboard
     var victims: Bitboard = 0

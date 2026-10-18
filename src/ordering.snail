@@ -1,7 +1,7 @@
 use search
 use material
 
-var mvv_lva: [PieceLimit * 32]int
+var mvv_lva: [PieceLimit * 64]int
 
 fn value_or(piece: int, fallback: int) -> int
     let kind = piece >> 1
@@ -9,10 +9,10 @@ fn value_or(piece: int, fallback: int) -> int
 
 init
     for victim in 0..PieceLimit
-        for capture_bit in 0..2
-            let victim_value = value_or(victim, capture_bit != 0 ? PawnValue : 0)
+        for flags in 0..4
+            let victim_value = value_or(victim, flags & 1 != 0 ? PawnValue : 0)
             for attacker in 0..PieceLimit
-                mvv_lva[victim << 5 | capture_bit << 4 | attacker] = victim_value * 16 - value_or(attacker, PawnValue)
+                mvv_lva[victim << 6 | flags << 4 | attacker] = victim_value * 16 - value_or(attacker, PawnValue) + (flags >> 1) * QueenValue
 
 @inline
 fn find_move(moves: *Move, start: int, length: int, code: u16) -> int
@@ -73,6 +73,7 @@ extend Search
     @nosave
     fn order_tactical_moves(board: *Board, moves: *Move, length: int) -> int
         let codes = moves as *u16
+        var scores: [MaxOrderedTacticalMoves]int = undefined
         var count = 0
         var i = 0
 
@@ -85,55 +86,56 @@ extend Search
                     if count >= MaxOrderedTacticalMoves: break
                     let index = i + mask.first
                     mask &= mask - 1
-                    score_and_swap(board, codes, index, count)
+                    score_and_swap(board, codes, &scores[0], index, count)
                     count += 1
                 i += 16
 
         while i < length and count < MaxOrderedTacticalMoves
             if codes[i] >= FirstTactical
-                score_and_swap(board, codes, i, count)
+                score_and_swap(board, codes, &scores[0], i, count)
                 count += 1
             i += 1
 
         for k in 1..count
             let code = codes[k]
-            let score = tactical_scores[k]
+            let score = scores[k]
             var j = k - 1
-            while j >= 0 and tactical_scores[j] < score
+            while j >= 0 and scores[j] < score
                 codes[j + 1] = codes[j]
-                tactical_scores[j + 1] = tactical_scores[j]
+                scores[j + 1] = scores[j]
                 j -= 1
             codes[j + 1] = code
-            tactical_scores[j + 1] = score
+            scores[j + 1] = score
         return count
 
     @inline
     fn sort_tactical_moves(board: *Board, moves: *Move, count: int)
         let codes = moves as *u16
         let length = min(count, MaxOrderedTacticalMoves)
+        var scores: [MaxOrderedTacticalMoves]int = undefined
         for k in 0..length
             let code = codes[k]
             let score = tactical_score(board, code)
             var j = k - 1
-            while j >= 0 and tactical_scores[j] < score
+            while j >= 0 and scores[j] < score
                 codes[j + 1] = codes[j]
-                tactical_scores[j + 1] = tactical_scores[j]
+                scores[j + 1] = scores[j]
                 j -= 1
             codes[j + 1] = code
-            tactical_scores[j + 1] = score
+            scores[j + 1] = score
 
     @inline
     fn tactical_score(board: *Board, code: u16) -> int
         let victim = board.squares[code >> 6 & 63]
         let attacker = board.squares[code & 63]
-        return mvv_lva[victim << 5 | (code >> 14 & 1) << 4 | attacker] + (code >> 15) * QueenValue
+        return mvv_lva[victim << 6 | (code >> 14) << 4 | attacker]
 
     @inline
-    fn score_and_swap(board: *Board, codes: *u16, index: int, slot: int)
+    fn score_and_swap(board: *Board, codes: *u16, scores: *int, index: int, slot: int)
         let code = codes[index]
         codes[index] = codes[slot]
         codes[slot] = code
-        tactical_scores[slot] = tactical_score(board, code)
+        scores[slot] = tactical_score(board, code)
 
     fn promote_killers(moves: *Move, length: int, insert_at: int, ply: int)
         var at = insert_at

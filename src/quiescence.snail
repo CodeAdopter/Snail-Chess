@@ -25,6 +25,7 @@ extend Search
         let moves = move_buffer(ply)
         let count = pseudo_legal_captures(board, moves, minimum_gain)
         if count == 0: return stand_pat
+        if count > MaxOrderedTacticalMoves: restore_generation_order(board, moves, count)
         if count > 1: sort_tactical_moves(board, moves, count)
 
         var best = stand_pat

@@ -20,15 +20,10 @@ fn shield_pawns[us: Side](board: *Board) -> int
 
 @inline
 fn piece_terms(board: *Board, entry: *PawnEntry) -> Score
-    let white_files = file_mask(entry.white_files)
-    let black_files = file_mask(entry.black_files)
-    let white_rooks = board.pieces(White, Rook) & ~white_files
-    let black_rooks = board.pieces(Black, Rook) & ~black_files
-    let open = (white_rooks & ~black_files).count - (black_rooks & ~white_files).count
-    let half_open = (white_rooks & black_files).count - (black_rooks & white_files).count
+    let rook_files = (board.pieces(White, Rook) & ~file_mask(entry.white_files)).count - (board.pieces(Black, Rook) & ~file_mask(entry.black_files)).count
     var score = PawnThreat * (pawn_threats[White](board) - pawn_threats[Black](board))
     score += KingShield * (shield_pawns[White](board) - shield_pawns[Black](board))
-    return score + RookOpenFile * open + RookHalfOpenFile * half_open
+    return score + RookFile * rook_files
 
 init
     for sq in 0..64
