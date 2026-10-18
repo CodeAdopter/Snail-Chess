@@ -1,0 +1,32 @@
+use config
+
+const Ln2 = 0.6931471805599453
+const SeriesTerms = 12
+
+var reductions: [64 * 64]u8
+
+fn inverse_tanh(x: f64) -> f64
+    var power = x
+    var sum = 0.0
+    for k in 0..SeriesTerms
+        sum += power / ((2 * k + 1) as f64)
+        power *= x * x
+    return sum
+
+fn natural_log(x: f64) -> f64
+    var mantissa = x
+    var halvings = 0
+    while mantissa >= 2.0
+        mantissa /= 2.0
+        halvings += 1
+    return (halvings as f64) * Ln2 + 2.0 * inverse_tanh((mantissa - 1.0) / (mantissa + 1.0))
+
+init
+    for depth in 1..64
+        for index in 1..64
+            let reduction = ReductionBase / 100.0 + natural_log(depth as f64) * natural_log(index as f64) * 100.0 / ReductionDivisor
+            reductions[depth << 6 | index] = reduction as u8
+
+@inline
+fn late_move_reduction(depth: int, index: int) -> int
+    return min(reductions[min(depth, 63) << 6 | min(index, 63)] as int, depth - 2)
