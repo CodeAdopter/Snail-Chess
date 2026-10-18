@@ -1,0 +1,48 @@
+use board
+use structure
+
+const AllSquares: Bitboard = 0xFFFFFFFFFFFFFFFF
+
+fn file_codes[us: Side](ours: Bitboard, theirs: Bitboard, rank: int) -> (int, int)
+    let none = 7 - rank
+    let own = relative_rank(us == White ? ours.first : ours.last) - rank
+    let enemy = relative_rank(us == White ? theirs.first : theirs.last) - rank
+    let shelter = own == none ? 0 : min(own, 3)
+    let storm = enemy == none ? 0 : enemy == own + 1 ? 3 : enemy <= 2 ? 2 : 1
+    return shelter, storm
+
+fn king_shelter[us: Side](ours: Bitboard, theirs: Bitboard, king: Square) -> (Score, Score)
+    let rank = relative_rank(king)
+    let ahead = us == White ? AllSquares << 8 << king.rank * 8 : AllSquares >> 8 >> (7 - king.rank) * 8
+    let edge = min(king.file, 7 - king.file)
+    let centre = clamp(king.file, 1, 6)
+    let step = king.file < 4 ? 1 : -1
+    var shelter = edge << 6
+    var storm = edge << 6
+    for offset in 0..3
+        let file = FileA << centre + (offset - 1) * step
+        let top = file & promotion_rank()
+        let (own, threat) = file_codes(ours & file & ahead | top, theirs & file & ahead | top, rank)
+        shelter |= own << offset * 2
+        storm |= threat << offset * 2
+    return KingShelterContext[shelter] + KingStormContext[storm], KingShelterContext[256 | shelter] + KingStormContext[256 | storm]
+
+@noinline
+fn fill_king_entry(entry: *PawnEntry, kings: u16, white_king: Square, black_king: Square)
+    entry.kings = kings
+    let (white_calm, white_queen) = king_shelter[White](entry.white, entry.black, white_king)
+    let (black_calm, black_queen) = king_shelter[Black](entry.black, entry.white, black_king)
+    entry.shelter[0] = white_calm as i32
+    entry.shelter[1] = white_queen as i32
+    entry.shelter[2] = black_calm as i32
+    entry.shelter[3] = black_queen as i32
+
+@inline
+fn king_terms(board: *Board, entry: *PawnEntry) -> Score
+    let white_king = board.king_square(White)
+    let black_king = board.king_square(Black)
+    let kings = (white_king | black_king << 6) as u16
+    if entry.kings != kings: fill_king_entry(entry, kings, white_king, black_king)
+    let white = entry.shelter[board.pieces(Black, Queen) ? 1 : 0]
+    let black = entry.shelter[board.pieces(White, Queen) ? 3 : 2]
+    return (white - black) as Score

@@ -9,8 +9,9 @@ const PawnMixBlack: u64 = 0xC2B2AE3D27D4EB4F
 struct PawnEntry
     white: Bitboard
     black: Bitboard
-    passed: Bitboard
+    shelter: [4]i32
     score: i32
+    kings: u16
     white_files: u8
     black_files: u8
 
@@ -18,7 +19,7 @@ struct PawnEntry
 fn pawn_slot(white: Bitboard, black: Bitboard) -> int
     return (white * PawnMixWhite ^ black * PawnMixBlack) >> 64 - PawnCacheBits
 
-fn side_structure[us: Side](ours: Bitboard, theirs: Bitboard, files: Bitboard, behind: Bitboard, stoppers: Bitboard) -> (Score, Bitboard)
+fn side_structure[us: Side](ours: Bitboard, theirs: Bitboard, files: Bitboard, behind: Bitboard, stoppers: Bitboard) -> Score
     const them = us.other
     let passed = ours & ~(stoppers | beside(stoppers) | behind)
     let isolated = ours & ~beside(files)
@@ -36,12 +37,12 @@ fn side_structure[us: Side](ours: Bitboard, theirs: Bitboard, files: Bitboard, b
         for sq in ours
             score += PawnContext[(relative_rank(sq) - 1) << 7 | pext(planes, lane)]
             lane <<= 1
-        return score, passed
+        return score
     for sq in ours
         var context = (passed >> sq & 1) | (isolated >> sq & 1) << 1 | (doubled >> sq & 1) << 2 | (supported >> sq & 1) << 3
         context |= (phalanx >> sq & 1) << 4 | (opposed >> sq & 1) << 5 | (backward >> sq & 1) << 6
         score += PawnContext[(relative_rank(sq) - 1) << 7 | context]
-    return score, passed
+    return score
 
 @noinline
 fn fill_pawn_entry(entry: *PawnEntry, white: Bitboard, black: Bitboard)
@@ -49,11 +50,11 @@ fn fill_pawn_entry(entry: *PawnEntry, white: Bitboard, black: Bitboard)
     let white_down = south_fill(white)
     let black_up = north_fill(black)
     let black_down = south_fill(black)
-    let (white_score, white_passed) = side_structure[White](white, black, white_up | white_down, white_down >> 8, black_down >> 8)
-    let (black_score, black_passed) = side_structure[Black](black, white, black_up | black_down, black_up << 8, white_up << 8)
+    let white_score = side_structure[White](white, black, white_up | white_down, white_down >> 8, black_down >> 8)
+    let black_score = side_structure[Black](black, white, black_up | black_down, black_up << 8, white_up << 8)
     entry.white = white
     entry.black = black
-    entry.passed = white_passed | black_passed
     entry.score = (white_score - black_score) as i32
     entry.white_files = (white_up | white_down) as u8
     entry.black_files = (black_up | black_down) as u8
+    entry.kings = 0xFFFF
