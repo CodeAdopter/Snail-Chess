@@ -18,7 +18,6 @@ struct SearchLimits
 struct Search
     killers: [MaximumPly * 2]Move
     move_stack: [MaximumPly * MovesPerPly]Move
-    tactical_scores: [MaxOrderedTacticalMoves]int
     pawn_entries: [PawnCacheSize]PawnEntry
 
     pv_table: [MaximumPly * MaximumPly]Move

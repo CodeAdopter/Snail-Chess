@@ -26,8 +26,7 @@ const SupportedPawn = S(8, 6)
 const PhalanxPawn = S(5, 5)
 
 const PawnThreat = S(45, 25)
-const RookOpenFile = S(25, 8)
-const RookHalfOpenFile = S(10, 6)
+const RookFile = S(18, 7)
 const KingShield = S(12, 0)
 
 const BishopPair = S(30, 50)
