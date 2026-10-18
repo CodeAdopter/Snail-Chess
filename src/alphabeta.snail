@@ -102,7 +102,7 @@ extend Search
                     alpha = score
                     update_pv(ply, table_move, false)
                 if alpha >= beta
-                    remember_killer(ply, table_move)
+                    reward_quiet(ply, depth, table_move)
                     return best_score, best_move, false
 
             let finished = depth == 1 ? frontier_tactical_first(board, stand_pat, ref alpha, beta, ply, ref best_score, ref resume_at, ref result) : tactical_first(board, depth, stand_pat, ref alpha, beta, ply, hash, table_move, ref best_score, ref best_move, ref resume_at, ref result)
@@ -130,6 +130,7 @@ extend Search
 
         let tactical_end = fixed + order_tactical_moves(board, moves + fixed, move_count - fixed)
         if ply == 0: sort_by_centrality(board, moves + tactical_end, move_count - tactical_end)
+        elif depth >= HistoryMinDepth: sort_by_history(moves + tactical_end, move_count - tactical_end)
 
         let loop_start = resume_at < 0 ? 0 : resume_at + killers_searched
         var killers_at = tactical_end
@@ -180,7 +181,9 @@ extend Search
                     best_move_nodes = node_count - root_move_start
             if alpha < beta: continue
 
-            if move.code < FirstTactical: remember_killer(ply, move)
+            if move.code < FirstTactical
+                reward_quiet(ply, depth, move)
+                punish_quiets(moves + loop_start, i - loop_start, depth)
             break
 
         return best_score, best_move, false

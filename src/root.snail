@@ -40,6 +40,7 @@ extend Search
         soft_time_ms = limits.soft_time_ms
         node_limit = limits.max_nodes
         zero(&killers)
+        zero(&quiet_history)
         remember_game(board)
 
         var root_moves: [MaxMoves]Move = undefined
