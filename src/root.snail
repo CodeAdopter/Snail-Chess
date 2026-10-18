@@ -33,7 +33,6 @@ extend Search
 
     fn find_best_move(board: *Board, limits: SearchLimits) -> Move
         node_count = 0
-        main_node_count = 0
         until_stopped = limits.until_stopped
         start_ms = now_ms()
         time_limit_ms = limits.move_time_ms > 0 ? limits.move_time_ms : i64.max
@@ -88,7 +87,6 @@ extend Search
 
         stop_requested = false
         last_node_count = node_count
-        last_quiescence_nodes = node_count - main_node_count
         last_elapsed_ms = elapsed_ms()
         last_score = final_score
         last_depth = completed

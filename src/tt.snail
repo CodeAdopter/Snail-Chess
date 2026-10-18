@@ -1,6 +1,8 @@
 use primitives
 
+const TableMegabytes = 2
 const BucketSize = 4
+const TableBuckets = (TableMegabytes << 20) / (BucketSize * 8)
 
 enum Bound: u8
     NoBound = 0
@@ -18,34 +20,20 @@ packed TableEntry: u64
 
 const NoEntry = 0 as TableEntry
 
+var table_slots: [TableBuckets * BucketSize]u64
+
 struct TranspositionTable
-    entries: *u64
-    bucket_mask: u64
     generation: u64
 
-    static fn create(megabytes: int) -> *TranspositionTable
-        let table = new TranspositionTable
-        table.resize(megabytes)
-        return table
-
-    fn resize(megabytes: int)
-        if entries != null: free(entries)
-        let bytes = max(megabytes, 1) as u64 << 20
-        var buckets: u64 = 1
-        while buckets * 2 * BucketSize * 8 <= bytes
-            buckets *= 2
-        entries = alloc[u64](buckets * BucketSize)
-        bucket_mask = buckets - 1
-
     fn clear()
-        zero(entries, (bucket_mask + 1) * BucketSize)
+        zero(&table_slots[0], TableBuckets * BucketSize)
 
     fn new_search()
         generation = (generation + 1) & 63
 
     @inline
     fn bucket(hash: u64) -> *u64
-        return entries + (hash & bucket_mask) * BucketSize
+        return &table_slots[0] + (hash & (TableBuckets - 1)) * BucketSize
 
     @inline
     fn preload(hash: u64)

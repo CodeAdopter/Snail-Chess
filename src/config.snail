@@ -1,9 +1,7 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.11"
+const EngineVersion = "1.12"
 const EngineAuthor = "Angelo Wolff"
 
-const DefaultHashMegabytes = 64
-const MaxHashMegabytes = 65536
 const DefaultThreads = 1
 const MaxThreads = 256
 

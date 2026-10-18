@@ -28,25 +28,16 @@ struct SearchThreads
     last_line: [MaximumPly]Move
     last_line_length: int
 
-    static fn create(hash_megabytes: int) -> *SearchThreads
+    static fn create() -> *SearchThreads
         let threads = new SearchThreads
+        threads.table = new TranspositionTable
         threads.main = new Search
         threads.main.group = threads
-        threads.set_hash(hash_megabytes)
+        threads.main.table = threads.table
         return threads
 
     fn thread_count() -> int
         return helper_count + 1
-
-    fn set_hash(megabytes: int)
-        if table != null
-            free(table.entries)
-            free(table)
-            table = null
-        if megabytes > 0: table = TranspositionTable.create(megabytes)
-        main.table = table
-        for i in 0..helper_count
-            helpers[i].table = table
 
     fn set_threads(count: int)
         let wanted = clamp(count, 1, MaxThreads) - 1
@@ -65,7 +56,7 @@ struct SearchThreads
             free(helpers[helper_count])
 
     fn clear_hash()
-        if table != null: table.clear()
+        table.clear()
 
     fn stop()
         main.stop()
@@ -82,7 +73,7 @@ struct SearchThreads
         return nodes
 
     fn find_best_move(board: *Board, limits: SearchLimits) -> Move
-        if table != null: table.new_search()
+        table.new_search()
         depth_limit = limits.max_depth > 0 ? limits.max_depth : int.max
         until_stopped = limits.until_stopped
         deepest_depth = 0

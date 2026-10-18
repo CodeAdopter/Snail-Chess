@@ -59,7 +59,7 @@ extend Search
         resume_at = tactical_count
         return false
 
-    fn tactical_first[us: Side](board: *Board, depth: int, stand_pat: int, ref alpha: int, beta: int, ply: int, hash: u64, table_move: Move, ref best_score: int, ref best_move: Move, ref resume_at: int, ref score: int) -> bool
+    fn tactical_first[us: Side](board: *Board, depth: int, stand_pat: int, ref alpha: int, beta: int, ply: int, hash: u64, table_move: Move, table_key: u64, ref best_score: int, ref best_move: Move, ref resume_at: int, ref score: int) -> bool
         resume_at = -1
         score = 0
 
@@ -77,11 +77,13 @@ extend Search
                 copy(moves + 1, moves, found)
                 moves[0] = table_move
 
+        var next_key: u64 = 0
         for i in 0..tactical_count
             let move = moves[i]
-            if i + 1 < tactical_count: prefetch_child(board, moves[i + 1], depth, hash)
+            let key = i == 0 ? (move == table_move ? table_key : child_key(board, move, depth, hash)) : next_key
+            if i + 1 < tactical_count: next_key = child_key(board, moves[i + 1], depth, hash)
 
-            let move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity, 0)
+            let move_score = search_child(board, move, key, depth, alpha, beta, ply, best_score == -Infinity, 0)
             if stop_requested: return true
 
             if move_score > best_score
@@ -105,6 +107,8 @@ extend Search
         searched = 0
         score = 0
 
+        var second_key: u64 = 0
+        var second_known = false
         for k in 0..2
             let move = killers[ply * 2 + k]
             if move == NoMove: continue
@@ -113,7 +117,10 @@ extend Search
                 continue
             if not is_legal_quiet(board, move): continue
 
-            if k == 0 and killers[ply * 2 + 1] != NoMove: prefetch_child(board, killers[ply * 2 + 1], depth, hash)
+            let key = second_known ? second_key : child_key(board, move, depth, hash)
+            if k == 0 and killers[ply * 2 + 1] != NoMove
+                second_key = child_key(board, killers[ply * 2 + 1], depth, hash)
+                second_known = true
 
             searched += 1
             var move_score = 0
@@ -121,7 +128,7 @@ extend Search
             if depth == 1: (skipped, move_score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
             if not skipped
                 if depth > 1
-                    move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity, 0)
+                    move_score = search_child(board, move, key, depth, alpha, beta, ply, best_score == -Infinity, 0)
                 else
                     board.make(move)
                     move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1, null)

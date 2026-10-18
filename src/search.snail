@@ -37,7 +37,6 @@ struct Search
 
     start_ms: f64
     node_count: i64
-    main_node_count: i64
     time_limit_ms: i64
     node_limit: i64
     until_stopped: bool
@@ -49,7 +48,6 @@ struct Search
     best_move_nodes: i64
 
     last_node_count: i64
-    last_quiescence_nodes: i64
     last_elapsed_ms: i64
     last_score: int
     last_depth: int

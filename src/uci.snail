@@ -58,7 +58,7 @@ fn uci_loop()
     let uci = new Uci
     uci.board = new Board
     uci.board.load_fen(StartFen)
-    uci.threads = SearchThreads.create(DefaultHashMegabytes)
+    uci.threads = SearchThreads.create()
     uci.threads.set_threads(DefaultThreads)
     var words: [MaxWords]str = undefined
 
@@ -72,7 +72,6 @@ fn uci_loop()
         if command == "uci"
             print("id name {EngineName} {EngineVersion}")
             print("id author {EngineAuthor}")
-            print("option name Hash type spin default {DefaultHashMegabytes} min 0 max {MaxHashMegabytes}")
             print("option name Threads type spin default {DefaultThreads} min 1 max {MaxThreads}")
             print("uciok")
         elif command == "isready"
@@ -109,8 +108,7 @@ fn set_option(threads: *SearchThreads, words: *str, count: int)
     if count < 5 or words[1] != "name" or words[3] != "value": return
     let name = words[2]
     let value = parse_int(words[4]) as int
-    if name == "Hash" or name == "hash": threads.set_hash(clamp(value, 0, MaxHashMegabytes))
-    elif name == "Threads" or name == "threads": threads.set_threads(clamp(value, 1, MaxThreads))
+    if name == "Threads" or name == "threads": threads.set_threads(clamp(value, 1, MaxThreads))
 
 fn set_position(board: *Board, line: str, words: *str, count: int) -> bool
     var next = 2

@@ -37,9 +37,9 @@ fn mix(hash: u64, value: u64) -> u64
         h *= 1099511628211
     return h
 
-fn run_nps(passes: int, mask: u64, thread_count: int, hash_megabytes: int)
+fn run_nps(passes: int, mask: u64, thread_count: int)
     pin(mask)
-    let threads = SearchThreads.create(hash_megabytes)
+    let threads = SearchThreads.create()
     threads.set_threads(thread_count)
     threads.suppress_output = true
     let board = new Board
@@ -78,7 +78,7 @@ fn run_nps(passes: int, mask: u64, thread_count: int, hash_megabytes: int)
             scores[i] = threads.last_score
             best_ms[i] = ms
 
-    print("nps suite: {NpsPositionCount} positions, best of {passes} pass(es), {threads.thread_count()} thread(s), hash {hash_megabytes} MB")
+    print("nps suite: {NpsPositionCount} positions, best of {passes} pass(es), {threads.thread_count()} thread(s), hash {TableMegabytes} MB")
     print("    #  depth          nodes        ms     Mnps  bm      score")
     var total_nodes: i64 = 0
     var total_ms = 0.0

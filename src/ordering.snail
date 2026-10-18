@@ -50,6 +50,7 @@ fn most_central_move(board: *Board, moves: *Move, count: int) -> Move
             best_key = key
     return best
 
+@noinline
 fn sort_by_centrality(board: *Board, moves: *Move, count: int)
     var keys: [MaxMoves]int = undefined
     for i in 0..count

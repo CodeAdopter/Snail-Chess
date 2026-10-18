@@ -10,8 +10,7 @@ fn main()
         let passes = arg_count() > 2 ? parse_int(arg(2)) : 1
         let mask = arg_count() > 3 ? parse_hex(arg(3)) : 0
         let threads = arg_count() > 4 ? parse_int(arg(4)) : 1
-        let hash = arg_count() > 5 ? parse_int(arg(5)) : DefaultHashMegabytes
-        run_nps(passes, mask, threads, hash)
+        run_nps(passes, mask, threads)
     elif command == "bench"
         run_bench(arg_count() > 2 ? parse_int(arg(2)) : DefaultBenchDepth)
     elif command == "version" or command == "--version"

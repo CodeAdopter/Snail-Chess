@@ -19,17 +19,15 @@ fn run_bench(depth: int)
     search.find_best_move(board, SearchLimits(max_depth: min(depth, 6)))
 
     var total_nodes: i64 = 0
-    var total_quiescence: i64 = 0
     var total_ms: i64 = 0
     for i in 0..6
         board.load_fen(bench_position(i))
         let best = search.find_best_move(board, SearchLimits(max_depth: depth))
         total_nodes += search.last_node_count
-        total_quiescence += search.last_quiescence_nodes
         total_ms += search.last_elapsed_ms
         let ms = max(search.last_elapsed_ms, 1)
         write("  d{search.last_depth:-2} {search.last_node_count:12} nodes  {search.last_elapsed_ms:6} ms  {search.last_node_count / (ms * 1000.0):6.2} Mnps  score {search.last_score:6}  bm ")
         write_move(best)
         print()
     let ms = max(total_ms, 1)
-    print("bench depth {depth}: {total_nodes} nodes ({100.0 * total_quiescence / max(total_nodes, 1):.1}% q)  {total_ms} ms  {total_nodes / (ms * 1000.0):.2} Mnps")
+    print("bench depth {depth}: {total_nodes} nodes  {total_ms} ms  {total_nodes / (ms * 1000.0):.2} Mnps")

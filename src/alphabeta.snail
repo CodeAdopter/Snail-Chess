@@ -5,20 +5,19 @@ use reductions
 
 extend Search
     @inline
-    fn prefetch_child[us: Side](board: *Board, move: Move, depth: int, hash: u64)
-        if hash != 0 and depth - 1 >= TableMinimumDepth: table.preload(board.key_after(move, hash))
+    fn child_key[us: Side](board: *Board, move: Move, depth: int, hash: u64) -> u64
+        if hash == 0 or depth - 1 < TableMinimumDepth: return 0
+        let key = board.key_after(move, hash)
+        table.preload(key)
+        return key
 
     @inline
-    fn search_child[us: Side](board: *Board, move: Move, depth: int, alpha: int, beta: int, ply: int, hash: u64, first: bool, reduction: int) -> int
-        var child_hash: u64 = 0
-        if hash != 0 and depth - 1 >= TableMinimumDepth
-            child_hash = board.key_after(move, hash)
-            table.preload(child_hash)
-            clocks[ply + 1] = board.resets_clock(move) ? 0 : clocks[ply] + 1
+    fn search_child[us: Side](board: *Board, move: Move, key: u64, depth: int, alpha: int, beta: int, ply: int, first: bool, reduction: int) -> int
+        if key != 0: clocks[ply + 1] = board.resets_clock(move) ? 0 : clocks[ply] + 1
         board.make(move)
         let reduced = reduction > 0 and not board.in_check[us.other]() ? reduction : 0
-        var score = -alpha_beta[us.other](board, depth - 1 - reduced, first ? -beta : -alpha - 1, -alpha, ply + 1, child_hash)
-        if not first and score > alpha and (reduced > 0 or score < beta): score = -alpha_beta[us.other](board, depth - 1, -beta, -alpha, ply + 1, child_hash)
+        var score = -alpha_beta[us.other](board, depth - 1 - reduced, first ? -beta : -alpha - 1, -alpha, ply + 1, key)
+        if not first and score > alpha and (reduced > 0 or score < beta): score = -alpha_beta[us.other](board, depth - 1, -beta, -alpha, ply + 1, key)
         board.unmake(move)
         return score
 
@@ -44,10 +43,10 @@ extend Search
         if depth <= 0: return quiescence(board, alpha, beta, ply, null)
 
         node_count += 1
-        main_node_count += 1
         pv_length[ply] = ply
 
         var table_move = NoMove
+        var table_key: u64 = 0
         var table_score = 0
         var table_bound = NoBound
         if hash != 0
@@ -61,7 +60,7 @@ extend Search
                 if ply > 0 and entry.depth >= depth
                     if entry.bound & Lower and table_score >= beta: return table_score
                     if entry.bound & Upper and table_score <= alpha: return table_score
-                if table_move != NoMove: prefetch_child(board, table_move, depth, hash)
+                if table_move != NoMove: table_key = child_key(board, table_move, depth, hash)
             if table_move == NoMove and depth >= ReductionWithoutMoveDepth: depth -= 1
 
         var stand_pat = evaluate(board)
@@ -75,7 +74,7 @@ extend Search
             if stop_requested: return 0
             if score >= beta: return score >= MateBound ? beta : score
 
-        let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move, stand_pat)
+        let (result, best_move, stopped) = search_moves(board, depth, alpha, beta, ply, hash, table_move, table_key, stand_pat)
         if stopped: return 0
 
         if hash != 0
@@ -84,7 +83,7 @@ extend Search
         return result
 
     @inline
-    fn search_moves[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64, table_move: Move, stand_pat: int) -> (int, Move, bool)
+    fn search_moves[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64, table_move: Move, table_key: u64, stand_pat: int) -> (int, Move, bool)
         var best_score = -Infinity
         var best_move = NoMove
         var result = 0
@@ -94,7 +93,7 @@ extend Search
         if ply > 0
             if table_move != NoMove and table_move.code < FirstTactical and is_legal_quiet(board, table_move)
                 searched_first = table_move
-                let score = search_child(board, table_move, depth, alpha, beta, ply, hash, true, 0)
+                let score = search_child(board, table_move, table_key, depth, alpha, beta, ply, true, 0)
                 if stop_requested: return 0, best_move, true
                 best_score = score
                 best_move = table_move
@@ -105,7 +104,7 @@ extend Search
                     reward_quiet(ply, depth, table_move)
                     return best_score, best_move, false
 
-            let finished = depth == 1 ? frontier_tactical_first(board, stand_pat, ref alpha, beta, ply, ref best_score, ref resume_at, ref result) : tactical_first(board, depth, stand_pat, ref alpha, beta, ply, hash, table_move, ref best_score, ref best_move, ref resume_at, ref result)
+            let finished = depth == 1 ? frontier_tactical_first(board, stand_pat, ref alpha, beta, ply, ref best_score, ref resume_at, ref result) : tactical_first(board, depth, stand_pat, ref alpha, beta, ply, hash, table_move, table_key, ref best_score, ref best_move, ref resume_at, ref result)
             if finished: return result, best_move, stop_requested
 
         var killers_searched = 0
@@ -140,6 +139,7 @@ extend Search
 
         let prefetching = hash != 0 and depth - 1 >= TableMinimumDepth
         let reducing = depth >= ReductionMinDepth and not board.in_check()
+        var next_key: u64 = 0
 
         for i in loop_start..move_count
             if i == killers_at
@@ -147,13 +147,13 @@ extend Search
                 killers_at = -1
 
             let move = moves[i]
-            if move == searched_first: continue
-
+            let key = i == loop_start ? (move == table_move ? table_key : child_key(board, move, depth, hash)) : next_key
             if prefetching and i + 1 < move_count
                 if i + 1 == killers_at
                     promote_killers(moves, move_count, killers_at, ply)
                     killers_at = -1
-                table.preload(board.key_after(moves[i + 1], hash))
+                next_key = child_key(board, moves[i + 1], depth, hash)
+            if move == searched_first: continue
 
             var score = 0
             var skipped = false
@@ -163,7 +163,7 @@ extend Search
                     if ply == 0: root_move_start = node_count
                     let first = best_score == -Infinity
                     let reduction = (reducing and not first and move.code < FirstTactical) ? late_move_reduction(depth, i) : 0
-                    score = search_child(board, move, depth, alpha, beta, ply, hash, first, reduction)
+                    score = search_child(board, move, key, depth, alpha, beta, ply, first, reduction)
                 else
                     board.make(move)
                     score = -quiescence[us.other](board, -beta, -alpha, ply + 1, null)

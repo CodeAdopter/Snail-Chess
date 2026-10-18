@@ -25,6 +25,7 @@ extend Search
         for i in 0..count
             if moves[i].code < FirstTactical: update_history(moves[i], malus)
 
+    @noinline
     fn sort_by_history[us: Side](moves: *Move, count: int)
         var keys: [MaxMoves]int = undefined
         for i in 0..count
