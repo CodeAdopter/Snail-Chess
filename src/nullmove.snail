@@ -26,5 +26,5 @@ fn allows_null_move[us: Side](board: *Board, depth: int, beta: int, stand_pat: i
     return board.occupancy(us) != board.pieces(us, Pawn) | board.pieces(us, King) and not board.in_check()
 
 @inline
-fn null_move_depth(depth: int) -> int
-    return depth - 1 - NullMoveReduction - depth / NullMoveDepthDivisor
+fn null_move_depth(depth: int, margin: int) -> int
+    return depth - 1 - NullMoveReduction - depth / NullMoveDepthDivisor - min(margin / NullMoveEvalDivisor, NullMoveEvalMax)

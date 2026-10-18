@@ -11,6 +11,26 @@ fn skips_depth(helper: int, depth: int) -> bool
     return (depth + SkipPhase[i]) / SkipSize[i] % 2 != 0
 
 extend Search
+    fn aspiration_search(board: *Board, depth: int, previous: int, hash: u64) -> int
+        var window = AspirationWindow
+        var alpha = -Infinity
+        var beta = Infinity
+        if depth >= AspirationMinDepth and abs(previous) < MateBound
+            alpha = previous - window
+            beta = previous + window
+        var score = 0
+        while true
+            best_move_nodes = 0
+            score = alpha_beta[board.side](board, depth, alpha, beta, 0, hash)
+            if stop_requested or (score > alpha and score < beta): break
+            if score <= alpha
+                beta = (alpha + beta) / 2
+                alpha = max(score - window, -Infinity)
+            else
+                beta = min(score + window, Infinity)
+            window *= 2
+        return score
+
     fn find_best_move(board: *Board, limits: SearchLimits) -> Move
         node_count = 0
         main_node_count = 0
@@ -41,8 +61,7 @@ extend Search
             if skips_depth(helper_index, depth): continue
             let hash = depth >= TableMinimumDepth ? root_hash : 0
             let iteration_start = node_count
-            best_move_nodes = 0
-            let score = alpha_beta[board.side](board, depth, -Infinity, Infinity, 0, hash)
+            let score = aspiration_search(board, depth, final_score, hash)
             if stop_requested and depth > 1: break
 
             let previous_score = final_score
