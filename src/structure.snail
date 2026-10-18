@@ -18,12 +18,29 @@ struct PawnEntry
 fn pawn_slot(white: Bitboard, black: Bitboard) -> int
     return (white * PawnMixWhite ^ black * PawnMixBlack) >> 64 - PawnCacheBits
 
-fn side_structure[us: Side](ours: Bitboard, files: Bitboard, behind: Bitboard, stoppers: Bitboard) -> (Score, Bitboard)
+fn side_structure[us: Side](ours: Bitboard, theirs: Bitboard, files: Bitboard, behind: Bitboard, stoppers: Bitboard) -> (Score, Bitboard)
+    const them = us.other
     let passed = ours & ~(stoppers | beside(stoppers) | behind)
-    var score = IsolatedPawn * (ours & ~beside(files)).count + DoubledPawn * (ours & behind).count
-    score += SupportedPawn * (ours & (capture_west(ours) | capture_east(ours))).count + PhalanxPawn * (ours & beside(ours)).count
-    for sq in passed
-        score += PassedRank[relative_rank(sq)]
+    let isolated = ours & ~beside(files)
+    let doubled = ours & behind
+    let supported = ours & (capture_west(ours) | capture_east(ours))
+    let phalanx = ours & beside(ours)
+    let opposed = ours & stoppers
+    let level = us == White ? north_fill(beside(ours)) : south_fill(beside(ours))
+    let backward = ours & ~level & push[them](enemy_pawn_attacks(theirs) | theirs)
+    var score: Score = 0
+    if has_pext()
+        var planes = pext(passed, ours) | pext(isolated, ours) << 8 | pext(doubled, ours) << 16 | pext(supported, ours) << 24
+        planes |= pext(phalanx, ours) << 32 | pext(opposed, ours) << 40 | pext(backward, ours) << 48
+        var lane: u64 = 0x0001010101010101
+        for sq in ours
+            score += PawnContext[(relative_rank(sq) - 1) << 7 | pext(planes, lane)]
+            lane <<= 1
+        return score, passed
+    for sq in ours
+        var context = (passed >> sq & 1) | (isolated >> sq & 1) << 1 | (doubled >> sq & 1) << 2 | (supported >> sq & 1) << 3
+        context |= (phalanx >> sq & 1) << 4 | (opposed >> sq & 1) << 5 | (backward >> sq & 1) << 6
+        score += PawnContext[(relative_rank(sq) - 1) << 7 | context]
     return score, passed
 
 @noinline
@@ -32,8 +49,8 @@ fn fill_pawn_entry(entry: *PawnEntry, white: Bitboard, black: Bitboard)
     let white_down = south_fill(white)
     let black_up = north_fill(black)
     let black_down = south_fill(black)
-    let (white_score, white_passed) = side_structure[White](white, white_up | white_down, white_down >> 8, black_down >> 8)
-    let (black_score, black_passed) = side_structure[Black](black, black_up | black_down, black_up << 8, white_up << 8)
+    let (white_score, white_passed) = side_structure[White](white, black, white_up | white_down, white_down >> 8, black_down >> 8)
+    let (black_score, black_passed) = side_structure[Black](black, white, black_up | black_down, black_up << 8, white_up << 8)
     entry.white = white
     entry.black = black
     entry.passed = white_passed | black_passed
