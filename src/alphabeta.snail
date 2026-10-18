@@ -21,8 +21,8 @@ extend Search
         return score
 
     @noinline
-    fn search_null[us: Side](board: *Board, depth: int, beta: int, ply: int, hash: u64) -> int
-        let reduced = null_move_depth(depth)
+    fn search_null[us: Side](board: *Board, depth: int, beta: int, margin: int, ply: int, hash: u64) -> int
+        let reduced = null_move_depth(depth, margin)
         var child_hash: u64 = 0
         if hash != 0 and reduced >= TableMinimumDepth
             child_hash = board.key_after_pass(hash)
@@ -46,23 +46,30 @@ extend Search
         pv_length[ply] = ply
 
         var table_move = NoMove
+        var table_score = 0
+        var table_bound = NoBound
         if hash != 0
             if ply > 0 and is_draw(hash, ply): return 0
             seen_keys[root_index + ply] = hash
             let entry = table.probe(hash)
             if entry != NoEntry
                 table_move = entry.move
+                table_score = score_from_table(entry.score, ply)
+                table_bound = entry.bound
                 if ply > 0 and entry.depth >= depth
-                    let table_score = score_from_table(entry.score, ply)
                     if entry.bound & Lower and table_score >= beta: return table_score
                     if entry.bound & Upper and table_score <= alpha: return table_score
                 if table_move != NoMove: prefetch_child(board, table_move, depth, hash)
+            if table_move == NoMove and depth >= ReductionWithoutMoveDepth: depth -= 1
 
-        let stand_pat = evaluate(board)
-        if ply > 0 and reverse_futility(board, depth, beta, stand_pat): return stand_pat
+        var stand_pat = evaluate(board)
+        static_evals[ply] = stand_pat
+        let improving = ply >= 2 and stand_pat > static_evals[ply - 2]
+        if table_bound & (table_score > stand_pat ? Lower : Upper) and abs(table_score) < MateBound: stand_pat = table_score
+        if ply > 0 and reverse_futility(board, depth, improving, beta, stand_pat): return stand_pat
 
         if ply > 0 and allows_null_move(board, depth, beta, stand_pat)
-            let score = search_null(board, depth, beta, ply, hash)
+            let score = search_null(board, depth, beta, stand_pat - beta, ply, hash)
             if stop_requested: return 0
             if score >= beta: return score >= MateBound ? beta : score
 
@@ -160,12 +167,12 @@ extend Search
             if score > best_score
                 best_score = score
                 best_move = move
-                if ply == 0
-                    pv_move = move
-                    best_move_nodes = node_count - root_move_start
             if score > alpha
                 alpha = score
                 update_pv(ply, move, depth == 1)
+                if ply == 0
+                    pv_move = move
+                    best_move_nodes = node_count - root_move_start
             if alpha < beta: continue
 
             if move.code < FirstTactical: remember_killer(ply, move)
