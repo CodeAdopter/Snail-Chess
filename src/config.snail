@@ -1,5 +1,5 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.9"
+const EngineVersion = "1.10"
 const EngineAuthor = "Angelo Wolff"
 
 const DefaultHashMegabytes = 64
@@ -51,3 +51,7 @@ const NullMoveEvalDivisor = 200
 const NullMoveEvalMax = 3
 
 const ReductionWithoutMoveDepth = 4
+
+const ReductionMinDepth = 3
+const ReductionBase = 56
+const ReductionDivisor = 258

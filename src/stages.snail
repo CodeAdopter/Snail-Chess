@@ -80,7 +80,7 @@ extend Search
             let move = moves[i]
             if i + 1 < tactical_count: prefetch_child(board, moves[i + 1], depth, hash)
 
-            let move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity)
+            let move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity, 0)
             if stop_requested: return true
 
             if move_score > best_score
@@ -120,7 +120,7 @@ extend Search
             if depth == 1: (skipped, move_score) = child_returns_stand_pat(board, move, stand_pat, alpha, beta, ply)
             if not skipped
                 if depth > 1
-                    move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity)
+                    move_score = search_child(board, move, depth, alpha, beta, ply, hash, best_score == -Infinity, 0)
                 else
                     board.make(move)
                     move_score = -quiescence[us.other](board, -beta, -alpha, ply + 1, null)
