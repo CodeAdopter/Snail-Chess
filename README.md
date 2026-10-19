@@ -80,6 +80,30 @@ Weights are based on my personal preference, and engines were picked by hand. Se
 
 Want your engine to join the snail race? Open an issue or discussion on GitHub with a link to a release and let me know! 🐌
 
+
+## Snail 
+Snail is a high performance personal programming language
+
+| | Snail | C | C++ | C# | Python | Rust | Zig |
+|---|---|---|---|---|---|---|---|
+| Runs as | Native | Native | Native | JIT | Interpreted | Native | Native |
+| Ease of writing | ★★★★★ | ★★☆☆☆ | ★★☆☆☆ | ★★★★☆ | ★★★★★ | ★★☆☆☆ | ★★★☆☆ |
+| Maintainability | ★★★★★ | ★★☆☆☆ | ★★☆☆☆ | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★★☆☆ |
+| Performance | ★★★★★ | ★★★★★ | ★★★★★ | ★★★★☆ | ★☆☆☆☆ | ★★★★★ | ★★★★★ |
+| Effort for fast code | Low | High | High | Medium | Very high | Medium | Medium |
+| Runs everywhere | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Memory safety | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | Partial |
+| Compile-time code | `[us: Side]` | Macros | Templates | Generics | None | Generics | `comptime` |
+
+| Test | Snail | C | C++ | C# | Python | Rust | Zig |
+|---|---|---|---|---|---|---|---|
+| N-Queens, boards 1 to 15 | 0.95 s | 0.96 s | 0.96 s | 1.04 s | 42.7 s | 0.96 s | 1.07 s |
+| Particles, 1,000 for 200,000 steps | 0.20 s | 0.21 s | 0.21 s | 0.40 s | 124 s | 0.20 s | 0.21 s |
+| Knight paths on bitboards | 0.11 s | 0.11 s | 0.11 s | 0.23 s | 50.0 s | 0.11 s | 0.11 s |
+| Sort 10 million numbers | 0.58 s | 0.88 s | 0.60 s | 0.61 s | 5.46 s | 0.16 s | 0.85 s |
+| Time overall, Snail = 1 | 1.00 | 1.14 | 1.02 | 1.49 | 105 | 0.72 | 1.15 |
+| Lines of code, all four tests | 97 | 117 | 106 | 100 | 75 | 145 | 125 |
+
 ## License
 
 Copyright 2026 Angelo Wolff. Snail Chess is free software under the GNU General Public License v3, see LICENSE.
