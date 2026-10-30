@@ -63,7 +63,7 @@ extend Search
                 if table_move != NoMove: table_key = child_key(board, table_move, depth, hash)
             if table_move == NoMove and depth >= ReductionWithoutMoveDepth: depth -= 1
 
-        var stand_pat = evaluate(board)
+        var stand_pat = hash != 0 ? cached_evaluate(board, hash) : evaluate(board)
         static_evals[ply] = stand_pat
         let improving = ply >= 2 and stand_pat > static_evals[ply - 2]
         if table_bound & (table_score > stand_pat ? Lower : Upper) and abs(table_score) < MateBound: stand_pat = table_score

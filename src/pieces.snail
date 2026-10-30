@@ -1,3 +1,4 @@
+use danger
 use shelter
 
 @inline
@@ -15,4 +16,4 @@ fn pawn_threats[us: Side](board: *Board) -> int
 fn piece_terms(board: *Board, entry: *PawnEntry) -> Score
     let rook_files = (board.pieces(White, Rook) & ~file_mask(entry.white_files)).count - (board.pieces(Black, Rook) & ~file_mask(entry.black_files)).count
     var score = PawnThreat * (pawn_threats[White](board) - pawn_threats[Black](board))
-    return score + RookFile * rook_files + king_terms(board, entry)
+    return score + RookFile * rook_files + king_terms(board, entry) + danger_terms(board)
