@@ -1,0 +1,56 @@
+use strength
+use book
+
+enum BookKind: u8
+    MasterLines
+    GambitLines
+    PassiveLines
+    NeutralLines
+
+struct Opening
+    paths: [BookKinds]FilePath
+    book: Book
+    attempted: int
+    has_book: bool
+    memory: Memory
+
+    fn set_book(kind: BookKind, name: str)
+        paths[kind as int].set(name)
+        attempted = 0
+
+    fn kind_for(strength: *Strength) -> BookKind
+        if not strength.limited or strength.elo >= MasterBookElo: return MasterLines
+        if strength.style == Aggressive: return GambitLines
+        if strength.style == Passive: return PassiveLines
+        return NeutralLines
+
+    fn book_move(board: *Board, game_ply: int, strength: *Strength) -> Move
+        let plies = strength.limited ? BookMinPlies + (strength.elo - MinStrengthElo) / BookEloPerPly : MaximumPly
+        if game_ply >= plies: return NoMove
+        var kind = kind_for(strength) as int
+        if paths[kind].length == 0: kind = MasterLines as int
+        if attempted != kind + 1
+            attempted = kind + 1
+            has_book = paths[kind].length > 0 and book.load(&paths[kind])
+        if not has_book: return NoMove
+        let entry = book.find(board.key)
+        if entry == null: return NoMove
+
+        var legal: [MaxMoves]Move = undefined
+        let legal_count = legal_moves(board, &legal[0])
+        var weights: [BookMoves]int
+        var fresh = 0
+        for i in 0..entry.count
+            weights[i] = find_move(&legal[0], 0, legal_count, entry.moves[i].code) >= 0 ? entry.weights[i] as int : 0
+            if weights[i] > 0 and not memory.exploited(board.key, entry.moves[i]): fresh += weights[i]
+        var total = 0
+        for i in 0..entry.count
+            if fresh > 0 and memory.exploited(board.key, entry.moves[i]): weights[i] = 0
+            total += weights[i]
+        if total == 0: return NoMove
+
+        var roll = (strength.next() % total as u64) as int
+        for i in 0..entry.count
+            if roll < weights[i]: return entry.moves[i]
+            roll -= weights[i]
+        return NoMove

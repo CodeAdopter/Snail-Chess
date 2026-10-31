@@ -28,6 +28,8 @@ struct Search
     seen_keys: [FiftyMovePlies + MaximumPly]u64
     clocks: [MaximumPly]int
     root_index: int
+    quiescence_trim: int
+    truth_score: int
 
     table: *TranspositionTable
     group: *SearchThreads

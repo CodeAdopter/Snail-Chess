@@ -1,0 +1,172 @@
+use root
+use memory
+
+enum Style: u8
+    Balanced
+    Aggressive
+    Passive
+
+struct HumanLevel
+    depth: int
+    captures: int
+    noise: int
+    max_loss: int
+    breadth: int
+
+struct Strength
+    limited: bool
+    elo: int
+    style: Style
+    random: SplitMix64
+
+    fn next() -> u64
+        if random.state == 0: random.state = now_ns() as u64
+        return random.next()
+
+    fn noise(sigma: int) -> int
+        let r = next()
+        let sum = (r & 0xFFFF) + (r >> 16 & 0xFFFF) + (r >> 32 & 0xFFFF) + (r >> 48)
+        return ((sum as i64 - 131070) * sigma / 37837) as int
+
+    fn level() -> HumanLevel
+        let offset = clamp(elo, MinStrengthElo, MaxStrengthElo) - MinStrengthElo
+        let i = min(offset / StrengthEloStep, HumanLevels - 2)
+        let part = offset - i * StrengthEloStep
+        let j = (next() % StrengthEloStep as u64) as int < part ? i + 1 : i
+        return HumanLevel(depth: HumanDepth[j], captures: HumanCaptures[j], noise: between(HumanNoise[i], HumanNoise[i + 1], part), max_loss: between(HumanMaxLoss[i], HumanMaxLoss[i + 1], part), breadth: HumanBreadth[j])
+
+fn between(low: int, high: int, part: int) -> int
+    return low + (high - low) * part / StrengthEloStep
+
+fn nth_best(scores: *int, count: int, n: int) -> int
+    var sorted: [MaxMoves]int = undefined
+    copy(&sorted[0], scores, count)
+    for i in 1..count
+        let value = sorted[i]
+        var j = i - 1
+        while j >= 0 and sorted[j] < value
+            sorted[j + 1] = sorted[j]
+            j -= 1
+        sorted[j + 1] = value
+    return sorted[min(n, count) - 1]
+
+fn style_bias(board: *Board, move: Move, style: Style) -> int
+    if style == Balanced: return 0
+    let mover = board.squares[move.from].kind
+    let victim = board.squares[move.to].kind
+    let enemy_king = board.king_square(board.side.other)
+    var bias = 0
+    if move.is_capture and victim != NoKind and victim != Pawn and abs(KindValue[victim as int] - KindValue[mover as int]) <= StyleTradeTolerance: bias -= StyleTradeBonus
+    if mover != Pawn and mover != King and king_distance(move.to, enemy_king) < king_distance(move.from, enemy_king): bias += StyleApproachBonus
+    if checks_directly(board, move, enemy_king): bias += StyleCheckBonus
+    return style == Aggressive ? bias : -bias
+
+fn checks_directly(board: *Board, move: Move, king: Square) -> bool
+    let kind = move.is_promotion ? move.promotion : board.squares[move.from].kind
+    let occupied = board.occupied() ^ move.from.bit | move.to.bit
+    match kind
+        Knight: return knight_attacks(move.to) & king.bit != 0
+        Bishop: return bishop_attacks(move.to, occupied) & king.bit != 0
+        Rook: return rook_attacks(move.to, occupied) & king.bit != 0
+        Queen: return queen_attacks(move.to, occupied) & king.bit != 0
+    return false
+
+extend Search
+    fn perception_spent() -> bool
+        if soft_time_ms > 0: return elapsed_ms() >= soft_time_ms * HumanTimeShare
+        return time_limit_ms != i64.max and elapsed_ms() >= time_limit_ms * 3 / 4
+
+    @noinline
+    fn child_value[us: Side](board: *Board, move: Move, depth: int, alpha: int, beta: int, hash: u64) -> int
+        let key = child_key(board, move, depth, hash)
+        if key != 0: clocks[1] = board.resets_clock(move) ? 0 : clocks[0] + 1
+        board.make(move)
+        let score = -alpha_beta[us.other](board, depth - 1, -beta, -alpha, 1, key)
+        board.unmake(move)
+        return score
+
+    fn perceive(board: *Board, moves: *Move, scores: *int, count: int, depth: int, captures: int, margin: int)
+        quiescence_trim = max(MaximumPly - 1 - depth - captures, 0)
+        let hash = quiescence_trim == 0 and table != null ? board.key : 0
+        var best = -Infinity
+        for i in 0..count
+            scores[i] = -Infinity
+        for i in 0..count
+            if i > 0 and perception_spent(): break
+            let floor = best == -Infinity ? -Infinity : best - margin
+            let score = child_value[board.side](board, moves[i], depth, floor, Infinity, hash)
+            if stop_requested: break
+            if score > floor: scores[i] = score
+            if score > best: best = score
+        quiescence_trim = 0
+
+    fn choose(board: *Board, moves: *Move, scores: *int, count: int, trusted: Move, bound: int, depth: int, memory: *Memory) -> int
+        let hash = table != null ? board.key : 0
+        loop
+            var pick = -1
+            for i in 0..count
+                if scores[i] > -Infinity and (pick < 0 or scores[i] > scores[pick]): pick = i
+            if pick < 0: return -1
+            let move = moves[pick]
+            let fresh = memory == null or not memory.exploited(board.key, move)
+            if fresh and (move == trusted or child_value[board.side](board, move, depth, bound - 1, bound, hash) >= bound): return pick
+            if stop_requested: return -1
+            scores[pick] = -Infinity
+
+    fn human_move(board: *Board, limits: SearchLimits, strength: *Strength, memory: *Memory) -> Move
+        var level = strength.level()
+        if limits.max_depth > 0: level.depth = min(level.depth, limits.max_depth)
+        var truth_limits = limits
+        if limits.move_time_ms > 0 and limits.soft_time_ms == 0: truth_limits.move_time_ms = limits.move_time_ms / 2
+        let truth_depth = max(HumanTruthDepth, level.depth + 2)
+        if truth_limits.max_depth == 0 or truth_limits.max_depth > truth_depth: truth_limits.max_depth = truth_depth
+        let truth_move = find_best_move(board, truth_limits)
+        truth_score = last_score
+        time_limit_ms = limits.move_time_ms > 0 ? limits.move_time_ms : i64.max
+        if truth_move == NoMove or reached_limit(): return truth_move
+
+        var moves: [MaxMoves]Move = undefined
+        let count = legal_moves(board, &moves[0])
+        if count == 1: return truth_move
+        let first = find_move(&moves[0], 0, count, truth_move.code)
+        if first > 0: swap(&moves[0], 0, first)
+
+        let truth = last_score
+        let verify_depth = max(last_depth - 1, 1)
+        var scores: [MaxMoves]int = undefined
+        let style_margin = strength.style == Balanced ? 0 : StyleTradeBonus + StyleCheckBonus + StyleApproachBonus
+        perceive(board, &moves[0], &scores[0], count, level.depth, level.captures, HumanNoiseSpread * level.noise + style_margin)
+        if stop_requested
+            stop_requested = false
+            return truth_move
+
+        var perceived: [MaxMoves]int = undefined
+        copy(&perceived[0], &scores[0], count)
+        let floor = nth_best(&perceived[0], count, level.breadth)
+        for i in 0..count
+            if scores[i] < floor: scores[i] = -Infinity
+            elif scores[i] > -Infinity and abs(scores[i]) < MateBound: scores[i] += strength.noise(level.noise) + style_bias(board, moves[i], strength.style)
+
+        let bound = truth > HumanWinningScore ? min(truth - level.max_loss, HumanWinningScore) : truth - level.max_loss
+        let pick = choose(board, &moves[0], &scores[0], count, truth_move, bound, verify_depth, memory)
+        let chosen = pick >= 0 ? moves[pick] : truth_move
+        stop_requested = false
+        last_score = pick >= 0 ? perceived[pick] : truth
+        last_depth = level.depth
+        last_line[0] = chosen
+        last_line_length = 1
+        return chosen
+
+    fn avoid_exploited(board: *Board, move: Move, memory: *Memory) -> Move
+        var moves: [MaxMoves]Move = undefined
+        let count = legal_moves(board, &moves[0])
+        if count <= 1: return move
+        let truth = last_score
+        let depth = clamp(last_depth - 2, 1, MemoryAlternativeDepth)
+        var scores: [MaxMoves]int = undefined
+        perceive(board, &moves[0], &scores[0], count, depth, MaximumPly, MemoryMargin)
+        let at = find_move(&moves[0], 0, count, move.code)
+        if at >= 0: scores[at] = -Infinity
+        let pick = stop_requested ? -1 : choose(board, &moves[0], &scores[0], count, NoMove, truth - MemoryMargin, depth + 1, memory)
+        stop_requested = false
+        return pick >= 0 ? moves[pick] : move

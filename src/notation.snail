@@ -1,0 +1,34 @@
+use movegen
+
+fn split_words(text: str, words: *str, capacity: int) -> int
+    var count = 0
+    var at: i64 = 0
+    while count < capacity
+        while at < text.len and (text[at] == ' ' or text[at] == '\t' or text[at] == '\r')
+            at += 1
+        if at >= text.len: break
+        let start = at
+        while at < text.len and text[at] != ' ' and text[at] != '\t' and text[at] != '\r'
+            at += 1
+        words[count] = text[start..at]
+        count += 1
+    return count
+
+fn parse_move(board: *Board, text: str) -> Move
+    var moves: [MaxMoves]Move = undefined
+    let count = legal_moves(board, &moves[0])
+    for i in 0..count
+        if move_matches(moves[i], text): return moves[i]
+    return NoMove
+
+fn move_matches(move: Move, text: str) -> bool
+    if text.len < 4: return false
+    if text[0] != 'a' + move.from.file or text[1] != '1' + move.from.rank: return false
+    if text[2] != 'a' + move.to.file or text[3] != '1' + move.to.rank: return false
+    if not move.is_promotion: return text.len == 4
+    if text.len != 5: return false
+    match move.promotion
+        Knight: return text[4] == 'n'
+        Bishop: return text[4] == 'b'
+        Rook: return text[4] == 'r'
+    return text[4] == 'q'

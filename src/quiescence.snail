@@ -17,7 +17,7 @@ extend Search
         let stand_pat = evaluate_with(board, entry)
         if stand_pat >= beta: return stand_pat
         if stand_pat > alpha: alpha = stand_pat
-        if ply >= MaximumPly - 1: return stand_pat
+        if ply + quiescence_trim >= MaximumPly - 1: return stand_pat
 
         if alpha > -MateBound and stand_pat + max_material_gain(board) + DeltaMargin <= alpha: return stand_pat
 

@@ -1,0 +1,42 @@
+extern fn fopen(path: *u8, mode: cstr) -> *void
+extern fn fread(buffer: *void, size: u64, count: u64, file: *void) -> u64
+extern fn fwrite(buffer: *void, size: u64, count: u64, file: *void) -> u64
+extern fn fclose(file: *void) -> int
+
+const MaxPathBytes = 1024
+
+struct FilePath
+    bytes: [MaxPathBytes]u8
+    length: int
+
+    fn set(name: str)
+        length = 0
+        bytes[0] = 0
+        if name.len == 0 or name == "<empty>": return
+        var start: i64 = 0
+        if not ((name.len > 1 and name[1] == ':') or name[0] == '/' or name[0] == '\\')
+            let program = arg(0)
+            start = program.len
+            while start > 0 and program[start - 1] != '/' and program[start - 1] != '\\'
+                start -= 1
+        if start + name.len >= MaxPathBytes: return
+        copy(&bytes[0], arg(0).ptr, start)
+        copy(&bytes[start], name.ptr, name.len)
+        length = (start + name.len) as int
+        bytes[length] = 0
+
+fn read_file(path: *FilePath, buffer: *u8, capacity: i64) -> i64
+    if path.length == 0: return -1
+    let file = fopen(&path.bytes[0], "rb")
+    if file == null: return -1
+    let length = fread(buffer, 1, capacity as u64, file) as i64
+    fclose(file)
+    return length
+
+fn write_file(path: *FilePath, data: *u8, length: i64) -> bool
+    if path.length == 0: return false
+    let file = fopen(&path.bytes[0], "wb")
+    if file == null: return false
+    let written = fwrite(data, 1, length as u64, file) as i64
+    fclose(file)
+    return written == length

@@ -1,0 +1,96 @@
+use files
+use primitives
+use config
+
+struct MemorySlot
+    key: u64
+    move: Move
+    games: u16
+    losses: u16
+    wins: u16
+
+struct Decision
+    key: u64
+    move: Move
+
+struct Memory
+    slots: *MemorySlot
+    path: FilePath
+    loaded: bool
+    decisions: [MemoryDecisions]Decision
+    decision_count: int
+    early_score: int
+    early_known: bool
+    final_score: int
+    final_known: bool
+
+    fn open(name: str)
+        path.set(name)
+        loaded = path.length > 0
+        forget_game()
+        if not loaded: return
+        if slots == null: slots = alloc[MemorySlot](MemorySlots)
+        zero(slots, MemorySlots)
+        read_file(&path, slots as *u8, MemorySlots * MemorySlotBytes)
+
+    fn forget_game()
+        decision_count = 0
+        early_known = false
+        final_known = false
+
+    fn find(key: u64, move: Move) -> *MemorySlot
+        let base = ((key ^ move as u64 * 0x9E37_79B9_7F4A_7C15) >> 47) as int
+        for i in 0..MemoryProbes
+            let slot = slots + ((base + i) & (MemorySlots - 1))
+            if slot.key == key and slot.move == move: return slot
+        return null
+
+    fn claim(key: u64, move: Move) -> *MemorySlot
+        let base = ((key ^ move as u64 * 0x9E37_79B9_7F4A_7C15) >> 47) as int
+        var chosen = slots + base
+        for i in 0..MemoryProbes
+            let slot = slots + ((base + i) & (MemorySlots - 1))
+            if slot.key == key and slot.move == move: return slot
+            if slot.games < chosen.games: chosen = slot
+        chosen.key = key
+        chosen.move = move
+        chosen.games = 0
+        chosen.losses = 0
+        chosen.wins = 0
+        return chosen
+
+    fn exploited(key: u64, move: Move) -> bool
+        if not loaded: return false
+        let slot = find(key, move)
+        return slot != null and slot.losses as int >= slot.wins as int + MemoryExploitMargin
+
+    fn decide(key: u64, move: Move, game_ply: int)
+        if not loaded or game_ply >= MemoryPlies or decision_count >= MemoryDecisions: return
+        decisions[decision_count] = Decision(key, move)
+        decision_count += 1
+
+    fn observe(score: int, game_ply: int)
+        if not loaded: return
+        if game_ply >= MemoryPlies and not early_known
+            early_score = score
+            early_known = true
+        final_score = score
+        final_known = true
+
+    fn finish_game()
+        if not loaded or decision_count == 0
+            forget_game()
+            return
+        let early_bad = early_known and early_score <= -MemoryEarlyScore
+        let early_good = early_known and early_score >= MemoryEarlyScore
+        let lost = final_known and final_score <= -MemoryResultScore
+        let won = final_known and final_score >= MemoryResultScore
+        let losses = early_bad ? 2 : lost ? 1 : 0
+        let wins = early_good ? 2 : won ? 1 : 0
+        for i in 0..decision_count
+            let slot = claim(decisions[i].key, decisions[i].move)
+            slot.games = min(slot.games as int + 1, 65535) as u16
+            slot.losses = min(slot.losses as int + losses, 65535) as u16
+            slot.wins = min(slot.wins as int + wins, 65535) as u16
+        write_file(&path, slots as *u8, MemorySlots * MemorySlotBytes)
+        forget_game()

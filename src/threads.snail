@@ -1,5 +1,4 @@
-use root
-use config
+use opening
 
 fn run_helper(search: *Search)
     search.find_best_move(search.root, SearchLimits(until_stopped: true))
@@ -12,6 +11,9 @@ struct SearchThreads
     table: *TranspositionTable
     report_lock: int
     suppress_output: bool
+    strength: Strength
+    opening: *Opening
+    avoid: *Memory
 
     start_ms: f64
     depth_limit: int
@@ -34,6 +36,8 @@ struct SearchThreads
         threads.main = new Search
         threads.main.group = threads
         threads.main.table = threads.table
+        threads.strength.elo = DefaultStrengthElo
+        threads.opening = new Opening
         return threads
 
     fn thread_count() -> int
@@ -72,8 +76,56 @@ struct SearchThreads
             nodes += atomic_load(&helpers[i].node_count)
         return nodes
 
+    fn choose_move(board: *Board, limits: SearchLimits, game_ply: int) -> Move
+        let memory = &opening.memory
+        if not limits.until_stopped
+            let book_move = opening.book_move(board, game_ply, &strength)
+            if book_move != NoMove
+                last_line[0] = book_move
+                last_line_length = 1
+                memory.decide(board.key, book_move, game_ply)
+                if not suppress_output
+                    write("info string book ")
+                    write_move(book_move)
+                    print()
+                return book_move
+
+        avoid = memory.loaded and game_ply < MemoryPlies ? memory : null
+        var move = find_best_move(board, limits)
+        if not strength.limited and avoid != null and move != NoMove and memory.exploited(board.key, move)
+            move = main.avoid_exploited(board, move, memory)
+            last_line[0] = move
+            last_line_length = 1
+        avoid = null
+        memory.decide(board.key, move, game_ply)
+        memory.observe(strength.limited ? main.truth_score : last_score, game_ply)
+        return move
+
+    fn finish_game()
+        opening.memory.finish_game()
+
+    fn find_human_move(board: *Board, limits: SearchLimits) -> Move
+        depth_limit = int.max
+        deepest_depth = 0
+        deepest_length = 0
+        start_ms = now_ms()
+        let quiet = suppress_output
+        suppress_output = true
+        let move = main.human_move(board, limits, &strength, avoid)
+        suppress_output = quiet
+
+        last_node_count = main.node_count
+        last_elapsed_ms = (now_ms() - start_ms) as i64
+        last_score = main.last_score
+        last_depth = main.last_depth
+        last_line_length = main.last_line_length
+        copy(&last_line[0], &main.last_line[0], last_line_length)
+        if not quiet and move != NoMove: print_info(last_depth, last_score, last_node_count, last_elapsed_ms, &last_line[0], last_line_length)
+        return move
+
     fn find_best_move(board: *Board, limits: SearchLimits) -> Move
         table.new_search()
+        if strength.limited: return find_human_move(board, limits)
         depth_limit = limits.max_depth > 0 ? limits.max_depth : int.max
         until_stopped = limits.until_stopped
         deepest_depth = 0

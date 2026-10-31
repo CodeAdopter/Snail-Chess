@@ -1,5 +1,4 @@
 use threads
-use fen
 
 const NpsPositionCount = 24
 

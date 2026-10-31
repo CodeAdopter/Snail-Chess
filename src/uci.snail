@@ -12,6 +12,7 @@ struct Uci
     searching: bool
     searched_this_game: bool
     custom_position: bool
+    game_ply: int
 
     fn stop_search()
         if not searching: return
@@ -26,7 +27,7 @@ struct Uci
 
 fn run_uci_search(uci: *Uci)
     let threads = uci.threads
-    let best = threads.find_best_move(uci.board, uci.limits)
+    let best = threads.choose_move(uci.board, uci.limits, uci.game_ply)
     if best == NoMove
         print("bestmove 0000")
         return
@@ -39,20 +40,6 @@ fn run_uci_search(uci: *Uci)
 
 fn print_version()
     print("{EngineName} {EngineVersion} by {EngineAuthor}")
-
-fn split_words(text: str, words: *str, capacity: int) -> int
-    var count = 0
-    var at: i64 = 0
-    while count < capacity
-        while at < text.len and (text[at] == ' ' or text[at] == '\t')
-            at += 1
-        if at >= text.len: break
-        let start = at
-        while at < text.len and text[at] != ' ' and text[at] != '\t'
-            at += 1
-        words[count] = text[start..at]
-        count += 1
-    return count
 
 fn uci_loop()
     let uci = new Uci
@@ -73,21 +60,32 @@ fn uci_loop()
             print("id name {EngineName} {EngineVersion}")
             print("id author {EngineAuthor}")
             print("option name Threads type spin default {DefaultThreads} min 1 max {MaxThreads}")
+            print("option name UCI_LimitStrength type check default false")
+            print("option name UCI_Elo type spin default {DefaultStrengthElo} min {MinStrengthElo} max {MaxStrengthElo}")
+            print("option name Style type combo default Balanced var Aggressive var Balanced var Passive")
+            print("option name MasterBook type string default <empty>")
+            print("option name GambitBook type string default <empty>")
+            print("option name PassiveBook type string default <empty>")
+            print("option name NeutralBook type string default <empty>")
+            print("option name MemoryFile type string default <empty>")
             print("uciok")
         elif command == "isready"
             print("readyok")
         elif command == "ucinewgame"
             uci.stop_search()
+            uci.threads.finish_game()
             uci.board.load_fen(StartFen)
             uci.threads.clear_hash()
             uci.searched_this_game = false
             uci.custom_position = false
         elif command == "setoption"
             uci.stop_search()
-            set_option(uci.threads, &words[0], count)
+            set_option(uci.threads, line, &words[0], count)
         elif command == "position"
             uci.stop_search()
-            uci.custom_position = set_position(uci.board, line, &words[0], count)
+            let (custom, plies) = set_position(uci.board, line, &words[0], count)
+            uci.custom_position = custom
+            uci.game_ply = plies
         elif command == "go"
             uci.stop_search()
             if parse_go(uci, &words[0], count)
@@ -103,14 +101,26 @@ fn uci_loop()
         elif command == "quit"
             break
     uci.stop_search()
+    uci.threads.finish_game()
 
-fn set_option(threads: *SearchThreads, words: *str, count: int)
+fn set_option(threads: *SearchThreads, line: str, words: *str, count: int)
     if count < 5 or words[1] != "name" or words[3] != "value": return
     let name = words[2]
-    let value = parse_int(words[4]) as int
+    let text = words[4]
+    let last = words[count - 1]
+    let rest = line[words[4].ptr - line.ptr..last.ptr - line.ptr + last.len]
+    let value = parse_int(text) as int
     if name == "Threads" or name == "threads": threads.set_threads(clamp(value, 1, MaxThreads))
+    elif name == "UCI_LimitStrength": threads.strength.limited = text == "true"
+    elif name == "UCI_Elo": threads.strength.elo = clamp(value, MinStrengthElo, MaxStrengthElo)
+    elif name == "Style": threads.strength.style = text == "Aggressive" ? Aggressive : text == "Passive" ? Passive : Balanced
+    elif name == "MasterBook": threads.opening.set_book(MasterLines, rest)
+    elif name == "GambitBook": threads.opening.set_book(GambitLines, rest)
+    elif name == "PassiveBook": threads.opening.set_book(PassiveLines, rest)
+    elif name == "NeutralBook": threads.opening.set_book(NeutralLines, rest)
+    elif name == "MemoryFile": threads.opening.memory.open(rest)
 
-fn set_position(board: *Board, line: str, words: *str, count: int) -> bool
+fn set_position(board: *Board, line: str, words: *str, count: int) -> (bool, int)
     var next = 2
     var custom = false
     if count > 1 and words[1] == "startpos"
@@ -118,14 +128,14 @@ fn set_position(board: *Board, line: str, words: *str, count: int) -> bool
     elif count > 1 and words[1] == "fen"
         while next < count and words[next] != "moves"
             next += 1
-        if next == 2: return false
+        if next == 2: return false, 0
         let start = words[2].ptr - line.ptr
         let last = words[next - 1]
         let end = last.ptr - line.ptr + last.len
-        if not board.load_fen(line[start..end]): return false
+        if not board.load_fen(line[start..end]): return false, 0
         custom = true
     else
-        return false
+        return false, 0
 
     if next < count and words[next] == "moves"
         for i in next + 1..count
@@ -134,27 +144,9 @@ fn set_position(board: *Board, line: str, words: *str, count: int) -> bool
             board.play(move)
             custom = true
 
+    let plies = board.ply
     board.discard_history()
-    return custom
-
-fn parse_move(board: *Board, text: str) -> Move
-    var moves: [MaxMoves]Move = undefined
-    let count = legal_moves(board, &moves[0])
-    for i in 0..count
-        if move_matches(moves[i], text): return moves[i]
-    return NoMove
-
-fn move_matches(move: Move, text: str) -> bool
-    if text.len < 4: return false
-    if text[0] != 'a' + move.from.file or text[1] != '1' + move.from.rank: return false
-    if text[2] != 'a' + move.to.file or text[3] != '1' + move.to.rank: return false
-    if not move.is_promotion: return text.len == 4
-    if text.len != 5: return false
-    match move.promotion
-        Knight: return text[4] == 'n'
-        Bishop: return text[4] == 'b'
-        Rook: return text[4] == 'r'
-    return text[4] == 'q'
+    return custom, plies
 
 fn parse_go(uci: *Uci, words: *str, count: int) -> bool
     var white_time: i64 = 0

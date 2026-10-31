@@ -1,0 +1,81 @@
+use files
+use notation
+use fen
+use config
+
+struct BookEntry
+    key: u64
+    moves: [BookMoves]Move
+    weights: [BookMoves]u16
+    count: int
+
+struct Book
+    entries: *BookEntry
+    size: int
+
+    fn clear()
+        if entries == null: entries = alloc[BookEntry](BookCapacity)
+        zero(entries, BookCapacity)
+        size = 0
+
+    fn find(key: u64) -> *BookEntry
+        if size == 0: return null
+        var i = (key & (BookCapacity - 1)) as int
+        loop
+            let entry = entries + i
+            if entry.key == key: return entry
+            if entry.key == 0: return null
+            i = (i + 1) & (BookCapacity - 1)
+
+    fn claim(key: u64) -> *BookEntry
+        var i = (key & (BookCapacity - 1)) as int
+        loop
+            let entry = entries + i
+            if entry.key == key: return entry
+            if entry.key == 0
+                if size >= BookCapacity / 2: return null
+                entry.key = key
+                size += 1
+                return entry
+            i = (i + 1) & (BookCapacity - 1)
+
+    fn load(path: *FilePath) -> bool
+        clear()
+        let text = alloc[u8](BookFileLimit)
+        let length = read_file(path, text, BookFileLimit)
+        if length > 0
+            let board = new Board
+            var words: [MaxBookWords]str = undefined
+            var at: i64 = 0
+            while at < length
+                var end = at
+                while end < length and text[end] != '\n'
+                    end += 1
+                add_line(board, str(text[at..end]), &words[0])
+                at = end + 1
+            free(board)
+        free(text)
+        return size > 0
+
+    fn add_line(board: *Board, line: str, words: *str)
+        let count = split_words(line, words, MaxBookWords)
+        var colon = 0
+        while colon < count and words[colon] != ":"
+            colon += 1
+        if colon >= count: return
+        board.load_fen(StartFen)
+        for i in 0..colon
+            let move = parse_move(board, words[i])
+            if move == NoMove: return
+            board.play(move)
+        let entry = claim(board.key)
+        if entry == null: return
+        var i = colon + 1
+        while i + 1 < count and entry.count < BookMoves
+            let move = parse_move(board, words[i])
+            let weight = parse_int(words[i + 1])
+            if move != NoMove and weight > 0
+                entry.moves[entry.count] = move
+                entry.weights[entry.count] = min(weight, 65535) as u16
+                entry.count += 1
+            i += 2

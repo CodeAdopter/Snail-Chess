@@ -54,6 +54,46 @@ const ReductionMinDepth = 3
 const ReductionBase = 56
 const ReductionDivisor = 258
 
+const MinStrengthElo = 800
+const MaxStrengthElo = 2800
+const DefaultStrengthElo = 1500
+const StrengthEloStep = 200
+const HumanLevels = 11
+const HumanDepth = [1, 2, 3, 4, 5, 5, 7, 8, 10, 12, 16]
+const HumanCaptures = [1, 2, 2, 4, 5, 7, 8, 10, 99, 99, 99]
+const HumanNoise = [60, 50, 45, 32, 24, 16, 14, 12, 8, 5, 2]
+const HumanMaxLoss = [350, 300, 250, 200, 170, 140, 110, 80, 60, 40, 25]
+const HumanBreadth = [4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3]
+const HumanNoiseSpread = 3
+const HumanTruthDepth = 12
+const HumanWinningScore = 500
+const HumanTimeShare = 2
+
+const BookKinds = 4
+const BookMoves = 8
+const BookCapacity = 1 << 17
+const BookFileLimit = 32 << 20
+const MaxBookWords = 128
+const MasterBookElo = 2200
+const BookMinPlies = 4
+const BookEloPerPly = 100
+
+const MemorySlots = 1 << 17
+const MemorySlotBytes = 16
+const MemoryProbes = 4
+const MemoryDecisions = 32
+const MemoryPlies = 24
+const MemoryEarlyScore = 80
+const MemoryResultScore = 400
+const MemoryExploitMargin = 3
+const MemoryAlternativeDepth = 10
+const MemoryMargin = 40
+
+const StyleCheckBonus = 20
+const StyleApproachBonus = 8
+const StyleTradeBonus = 25
+const StyleTradeTolerance = 50
+
 const HistoryMinDepth = 3
 const HistoryBonusCap = 1600
 const HistoryLimit = 16384
