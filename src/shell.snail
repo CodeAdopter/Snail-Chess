@@ -1,0 +1,70 @@
+use primitives
+use weights
+
+const ShellLanes = 32
+const ShellWindow = 2 * ShellLanes
+const ShellSize = 4 * ShellLanes
+const ShellGatePieces = [0, 0, 0, 1, 2, 0, 3, 0, 4, 0, 5, 0, 6, 7]
+
+var shell_rows: [PieceLimit * 64 * ShellWindow]i16
+var shell_window: [PieceLimit]u8
+var shell_start: [ShellSize]i16
+
+@inline
+fn shell_row(piece: Piece, sq: Square) -> *i16
+    return &shell_rows[(piece << 6 | sq) * ShellWindow]
+
+@inline
+fn shell_add(acc: *i16, piece: Piece, sq: Square)
+    let at = acc + shell_window[piece]
+    (i16x64.load(at) + i16x64.load(shell_row(piece, sq))).store(at)
+
+@inline
+fn shell_sub(acc: *i16, piece: Piece, sq: Square)
+    let at = acc + shell_window[piece]
+    (i16x64.load(at) - i16x64.load(shell_row(piece, sq))).store(at)
+
+@inline
+fn shell_move(acc: *i16, piece: Piece, from: Square, to: Square)
+    let at = acc + shell_window[piece]
+    (i16x64.load(at) + i16x64.load(shell_row(piece, to)) - i16x64.load(shell_row(piece, from))).store(at)
+
+@inline
+fn shell_eval(acc: *i16) -> int
+    let white_gate = clamp(i16x32.load(acc + ShellLanes), i16x32.splat(0), i16x32.splat(ShellGateLimit)) << ShellGateShift
+    let black_gate = clamp(i16x32.load(acc + 2 * ShellLanes), i16x32.splat(0), i16x32.splat(ShellGateLimit)) << ShellGateShift
+    let white = (white_gate as i32x32 * i16x32.load(acc) as i32x32 >> 16) as i16x32
+    let black = (black_gate as i32x32 * i16x32.load(acc + 3 * ShellLanes) as i32x32 >> 16) as i16x32
+    return ((white - black) as i32x32).sum
+
+fn shell_reset(acc: *i16)
+    copy(acc, &shell_start[0], ShellSize)
+
+fn shell_load(gate: *i8, value: *i8, gate_bias: *i16, value_bias: *i16)
+    for lane in 0..ShellLanes
+        shell_start[lane] = value_bias[lane]
+        shell_start[ShellLanes + lane] = gate_bias[lane]
+        shell_start[2 * ShellLanes + lane] = gate_bias[lane]
+        shell_start[3 * ShellLanes + lane] = value_bias[lane]
+    for piece in 2..PieceLimit
+        let kind = piece >> 1
+        let side = piece & 1
+        let body = kind >= Knight and kind <= Queen
+        shell_window[piece] = (body ? side * 2 * ShellLanes : ShellLanes) as u8
+        for sq in 0..64
+            let row = &shell_rows[(piece * 64 + sq) * ShellWindow]
+            for lane in 0..ShellLanes
+                let own = gate[(ShellGatePieces[piece] * 64 + sq) * ShellLanes + lane] as i16
+                let mirrored = gate[(ShellGatePieces[piece ^ 1] * 64 + (sq ^ 56)) * ShellLanes + lane] as i16
+                if not body
+                    row[lane] = own
+                    row[ShellLanes + lane] = mirrored
+                elif side == 0
+                    row[lane] = (value[((kind - Knight) * 64 + sq) * ShellLanes + lane] as int << ShellValueShift) as i16
+                    row[ShellLanes + lane] = own
+                else
+                    row[lane] = mirrored
+                    row[ShellLanes + lane] = (value[((kind - Knight) * 64 + (sq ^ 56)) * ShellLanes + lane] as int << ShellValueShift) as i16
+
+init
+    shell_load(&ShellGate[0], &ShellValue[0], &ShellGateBias[0], &ShellValueBias[0])

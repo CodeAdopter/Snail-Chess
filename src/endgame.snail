@@ -1,6 +1,5 @@
 use board
 use material
-use weights
 
 const DarkSquares: Bitboard = 0xAA55AA55AA55AA55
 

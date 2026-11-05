@@ -35,6 +35,7 @@ extend Board
         zero(&bb)
         zero(&squares)
         score = 0
+        shell_reset(&shell[0])
         ply = 0
         past_count = 0
         zero(&history[0])

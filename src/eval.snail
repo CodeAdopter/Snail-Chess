@@ -1,5 +1,5 @@
 use search
-use pieces
+use endgame
 
 const Infinity = 32000
 const MateValue = 30000
@@ -35,17 +35,14 @@ extend Search
         let white_pawns = board.pieces(White, Pawn)
         let black_pawns = board.pieces(Black, Pawn)
         let score = eval_terms(board, entry)
-        var blended = score.blend
+        var blended = score.blend + shell_eval(&board.shell[0])
         let phase = score.phase
         if phase <= EndgamePhase and (not white_pawns or not black_pawns or phase == 2): blended = scale_endgame(board, blended)
         return (us == White ? blended : -blended) + Tempo
 
 @inline
 fn eval_terms(board: *Board, entry: *PawnEntry) -> Score
-    var score = board.score + entry.score as Score + piece_terms(board, entry)
-    if board.pieces(White, Bishop).many: score += BishopPair
-    if board.pieces(Black, Bishop).many: score -= BishopPair
-    return score
+    return board.score + entry.score as Score
 
 @inline
 fn material_gain(board: *Board, move: Move) -> int

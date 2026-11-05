@@ -133,6 +133,7 @@ extend Board
         squares[to] = piece
         squares[from] = NoPiece
         score += placed(piece, to) - placed(piece, from)
+        shell_move(&shell[0], piece, from, to)
 
     @inline
     fn put(piece: Piece, sq: Square)
@@ -141,6 +142,7 @@ extend Board
         bb[piece & 1] |= bit
         squares[sq] = piece
         score += placed(piece, sq)
+        shell_add(&shell[0], piece, sq)
 
     @inline
     fn lift(sq: Square)
@@ -153,6 +155,7 @@ extend Board
         bb[piece] ^= bit
         bb[piece & 1] ^= bit
         score -= placed(piece, sq)
+        shell_sub(&shell[0], piece, sq)
 
     @nosave
     fn key_after[us: Side](move: Move, current: u64) -> u64

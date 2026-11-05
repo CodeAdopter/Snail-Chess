@@ -1,6 +1,6 @@
 use attacks
 use pawns
-use score
+use shell
 
 const HistoryCapacity = 2048
 const FiftyMovePlies = 100
@@ -19,6 +19,7 @@ struct Board
     ply: int
     key: u64
     score: Score
+    shell: [ShellSize]i16 @align(32)
     history: [HistoryCapacity]PlyState
     past_keys: [FiftyMovePlies]u64
     past_count: int
