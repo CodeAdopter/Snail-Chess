@@ -19,6 +19,10 @@ An HCE UCI chess engine written in Snail.
 | [1.10](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.10) | ~2735 | 26.9 Mnps | 52 KB | ~3468 |
 | [1.11](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.11) | ~2789 | 25.7 Mnps | 53 KB | ~3514 |
 | [1.12](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.12) | ~2886 | 26.8 Mnps | 52 KB | ~3618 |
+| [1.13](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.13) | ~2900 | 26.4 Mnps | 53 KB | ~3629 |
+| [1.14](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.14) | ~2930 | 23.4 Mnps | 58 KB | ~3634 |
+| [1.15](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.15) | ~2912 | 23.0 Mnps | 59 KB | ~3612 |
+| [1.16](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.16) | ~3056 | 24.9 Mnps | 83 KB | ~3737 |
 
 Start with the engine's Elo, then:
 
@@ -36,11 +40,11 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 | 1 | c4ke 3.0 | 3307 | 3.03 Mnps | 4 KB | 3947 |
 | 2 | ice4 6.1 | 3173 | 2.98 Mnps | 4 KB | 3811 |
 | 3 | Stockfish 11 | 3563 | 3.70 Mnps | 1.1 MB | 3743 |
-| 4 | Sirius 9.0 | 3529 | 2.84 Mnps | 537 KB | 3735 |
-| 5 | 4k.c 9.0 | 3085 | 3.01 Mnps | 4 KB | 3728 |
-| 6 | 4ku 5.1 | 3058 | 3.15 Mnps | 4 KB | 3704 |
-| 7 | Stash 37.0 | 3417 | 3.73 Mnps | 541 KB | 3662 |
-| 8 | **Snail Chess 1.12** | ~2886 | 26.8 Mnps | 52 KB | **~3618** |
+| 4 | **Snail Chess 1.16** | ~3056 | 24.9 Mnps | 83 KB | **~3737** |
+| 5 | Sirius 9.0 | 3529 | 2.84 Mnps | 537 KB | 3735 |
+| 6 | 4k.c 9.0 | 3085 | 3.01 Mnps | 4 KB | 3728 |
+| 7 | 4ku 5.1 | 3058 | 3.15 Mnps | 4 KB | 3704 |
+| 8 | Stash 37.0 | 3417 | 3.73 Mnps | 541 KB | 3662 |
 | 9 | Berserk 14 | 3739 | 2.85 Mnps | 25 MB | 3610 |
 | 10 | Koivisto 9.0 | 3632 | 4.29 Mnps | 15 MB | 3608 |
 | 11 | Weiss 2.0 | 3319 | 4.32 Mnps | 438 KB | 3604 |
