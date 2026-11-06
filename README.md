@@ -1,6 +1,6 @@
 # Snail Chess
 
-An HCE UCI chess engine written in Snail.
+An open source chess engine designed for [Snail Chess GUI](https://github.com/CodeAdopter/Snail-Chess-Gui) that uses Shell evaluation (a tiny split-input clipped ReGLU trained on its own self-play). All the self-play data is on [Hugging Face](https://huggingface.co/datasets/AngeloWolff/snail-chess-data).
 
 ## Versions
 
