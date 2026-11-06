@@ -1,5 +1,7 @@
 # Snail Chess 1.17
 
+Commit a909801
+
 | Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|
 | ~3230 | 22.8 Mnps | 84 KB | ~3898 |
