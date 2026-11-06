@@ -8,6 +8,9 @@ const MovesPerPly = 256
 
 const TableMinimumDepth = 2
 
+const ContinuationColumns = 7 * 64
+const NoContinuation = PieceLimit * 64
+
 struct SearchLimits
     max_depth: int
     move_time_ms: i64
@@ -18,6 +21,9 @@ struct SearchLimits
 struct Search
     killers: [MaximumPly * 2]Move
     quiet_history: [2 * 4096]int
+    counter_history: [(NoContinuation + 1) * ContinuationColumns]i16
+    follow_history: [(NoContinuation + 1) * ContinuationColumns]i16
+    played: [MaximumPly + 2]int
     static_evals: [MaximumPly]int
     move_stack: [MaximumPly * MovesPerPly]Move
     quiet_keys: [MaximumPly * MovesPerPly]int

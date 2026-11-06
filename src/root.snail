@@ -40,6 +40,8 @@ extend Search
         node_limit = limits.max_nodes
         zero(&killers)
         zero(&quiet_history)
+        played[0] = NoContinuation
+        played[1] = NoContinuation
         remember_game(board)
 
         var root_moves: [MaxMoves]Move = undefined

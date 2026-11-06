@@ -28,5 +28,5 @@ init
             reductions[depth << 6 | index] = reduction as u8
 
 @inline
-fn late_move_reduction(depth: int, index: int) -> int
-    return min(reductions[min(depth, 63) << 6 | min(index, 63)] as int, depth - 2)
+fn late_move_reduction(depth: int, index: int, history: int) -> int
+    return clamp(reductions[min(depth, 63) << 6 | min(index, 63)] as int - history / ReductionHistoryDivisor, 0, depth - 2)

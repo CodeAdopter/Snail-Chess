@@ -1,5 +1,5 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.16"
+const EngineVersion = "1.17"
 const EngineAuthor = "Angelo Wolff"
 
 const DefaultThreads = 1
@@ -53,6 +53,7 @@ const ReductionWithoutMoveDepth = 4
 const ReductionMinDepth = 3
 const ReductionBase = 56
 const ReductionDivisor = 258
+const ReductionHistoryDivisor = 8192
 
 const LateMovePruningMinDepth = 3
 const LateMovePruningDepth = 8
@@ -99,5 +100,6 @@ const StyleTradeBonus = 25
 const StyleTradeTolerance = 50
 
 const HistoryMinDepth = 3
-const HistoryBonusCap = 1600
+const HistoryBonusSlope = 128
+const HistoryBonusCap = 1536
 const HistoryLimit = 16384

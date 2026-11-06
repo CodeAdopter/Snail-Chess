@@ -142,7 +142,7 @@ extend Search
                 alpha = move_score
                 update_pv(ply, move, depth == 1)
             if alpha >= beta
-                reward_quiet(ply, depth, move)
+                reward_quiet(board, ply, depth, move)
                 score = best_score
                 return true
 

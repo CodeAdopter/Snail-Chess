@@ -61,6 +61,9 @@ struct SearchThreads
 
     fn clear_hash()
         table.clear()
+        main.clear_continuations()
+        for i in 0..helper_count
+            helpers[i].clear_continuations()
 
     fn stop()
         main.stop()

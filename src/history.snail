@@ -3,34 +3,71 @@ use config
 
 @inline
 fn history_bonus(depth: int) -> int
-    return min(depth * depth, HistoryBonusCap)
+    return min(HistoryBonusSlope * depth, HistoryBonusCap)
+
+@inline
+fn played_index(board: *Board, move: Move) -> int
+    return (board.squares[move.from] as int) << 6 | move.to as int
+
+@inline
+fn continuation_column(board: *Board, move: Move) -> int
+    return (board.squares[move.from] >> 1) << 6 | move.to as int
+
+@inline
+fn age(entry: *i16, bonus: int)
+    let value = *entry as int
+    *entry = (value + bonus - value * abs(bonus) / HistoryLimit) as i16
 
 extend Search
+    fn clear_continuations()
+        zero(&counter_history)
+        zero(&follow_history)
+
     @inline
     fn history_index[us: Side](move: Move) -> int
         return (us as int) << 12 | (move.code & 4095) as int
 
     @inline
-    fn update_history[us: Side](move: Move, bonus: int)
-        let i = history_index(move)
-        quiet_history[i] += bonus - quiet_history[i] * abs(bonus) / HistoryLimit
+    fn counter_row(ply: int) -> *i16
+        return &counter_history[played[ply + 1] * ContinuationColumns]
 
     @inline
-    fn reward_quiet[us: Side](ply: int, depth: int, move: Move)
-        remember_killer(ply, move)
-        update_history(move, history_bonus(depth))
+    fn follow_row(ply: int) -> *i16
+        return &follow_history[played[ply] * ContinuationColumns]
 
-    fn punish_quiets[us: Side](moves: *Move, count: int, depth: int)
-        let malus = -history_bonus(depth)
-        for i in 0..count
-            if moves[i].code < FirstTactical: update_history(moves[i], malus)
+    @inline
+    fn quiet_score[us: Side](board: *Board, move: Move, counter: *i16, follow: *i16) -> int
+        let column = continuation_column(board, move)
+        return quiet_history[history_index(move)] + counter[column] as int + follow[column] as int
+
+    @inline
+    fn update_history[us: Side](board: *Board, move: Move, ply: int, bonus: int)
+        let i = history_index(move)
+        quiet_history[i] += bonus - quiet_history[i] * abs(bonus) / HistoryLimit
+        let column = continuation_column(board, move)
+        let counter = played[ply + 1]
+        if counter != NoContinuation: age(&counter_history[counter * ContinuationColumns + column], bonus)
+        let follow = played[ply]
+        if follow != NoContinuation: age(&follow_history[follow * ContinuationColumns + column], bonus)
 
     @noinline
-    fn sort_by_history[us: Side](moves: *Move, count: int, keep: int, keys: *int)
+    fn reward_quiet[us: Side](board: *Board, ply: int, depth: int, move: Move)
+        remember_killer(ply, move)
+        update_history(board, move, ply, history_bonus(depth))
+
+    fn punish_quiets[us: Side](board: *Board, moves: *Move, count: int, depth: int, ply: int)
+        let malus = -history_bonus(depth)
+        for i in 0..count
+            if moves[i].code < FirstTactical: update_history(board, moves[i], ply, malus)
+
+    @noinline
+    fn sort_by_history[us: Side](board: *Board, moves: *Move, count: int, keep: int, keys: *int, ply: int)
         let head = min(keep, count)
+        let counter = counter_row(ply)
+        let follow = follow_row(ply)
         for i in 0..count
             let move = moves[i]
-            let key = quiet_history[history_index(move)] * 256 + 255 - i
+            let key = quiet_score(board, move, counter, follow) * 256 + 255 - i
             var j = i - 1
             if i >= head
                 if key < keys[head - 1]
