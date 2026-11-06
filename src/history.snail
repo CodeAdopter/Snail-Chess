@@ -26,15 +26,35 @@ extend Search
             if moves[i].code < FirstTactical: update_history(moves[i], malus)
 
     @noinline
-    fn sort_by_history[us: Side](moves: *Move, count: int)
-        var keys: [MaxMoves]int = undefined
+    fn sort_by_history[us: Side](moves: *Move, count: int, keep: int, keys: *int)
+        let head = min(keep, count)
         for i in 0..count
             let move = moves[i]
-            let key = quiet_history[history_index(move)]
+            let key = quiet_history[history_index(move)] * 256 + 255 - i
             var j = i - 1
+            if i >= head
+                if key < keys[head - 1]
+                    keys[i] = key
+                    continue
+                moves[i] = moves[head - 1]
+                keys[i] = keys[head - 1]
+                j = head - 2
             while j >= 0 and keys[j] < key
                 moves[j + 1] = moves[j]
                 keys[j + 1] = keys[j]
                 j -= 1
             moves[j + 1] = move
             keys[j + 1] = key
+
+@noinline
+fn sort_rest(moves: *Move, keys: *int, count: int)
+    for i in 1..count
+        let move = moves[i]
+        let key = keys[i]
+        var j = i - 1
+        while j >= 0 and keys[j] < key
+            moves[j + 1] = moves[j]
+            keys[j + 1] = keys[j]
+            j -= 1
+        moves[j + 1] = move
+        keys[j + 1] = key

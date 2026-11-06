@@ -20,6 +20,7 @@ struct Search
     quiet_history: [2 * 4096]int
     static_evals: [MaximumPly]int
     move_stack: [MaximumPly * MovesPerPly]Move
+    quiet_keys: [MaximumPly * MovesPerPly]int
     pawn_entries: [PawnCacheSize]PawnEntry
 
     pv_table: [MaximumPly * MaximumPly]Move
@@ -70,6 +71,10 @@ struct Search
     @inline
     fn move_buffer(ply: int) -> *Move
         return &move_stack[ply * MovesPerPly]
+
+    @inline
+    fn key_buffer(ply: int) -> *int
+        return &quiet_keys[ply * MovesPerPly]
 
     fn update_pv(ply: int, move: Move, child_is_leaf: bool)
         let row = ply * MaximumPly

@@ -1,0 +1,8 @@
+use config
+use primitives
+
+@inline
+fn late_move_limit(depth: int, improving: bool) -> int
+    if depth < LateMovePruningMinDepth or depth > LateMovePruningDepth: return MaxMoves
+    let limit = LateMoveBase + depth * depth
+    return improving ? limit : limit / 2

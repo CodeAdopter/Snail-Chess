@@ -54,6 +54,10 @@ const ReductionMinDepth = 3
 const ReductionBase = 56
 const ReductionDivisor = 258
 
+const LateMovePruningMinDepth = 3
+const LateMovePruningDepth = 8
+const LateMoveBase = 3
+
 const MinStrengthElo = 800
 const MaxStrengthElo = 2800
 const DefaultStrengthElo = 1500
