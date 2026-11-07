@@ -17,10 +17,8 @@ fn generate[us: Side, mode: Mode](board: *Board, ref sink: Sink)
 
         add_pawn_moves(board, ref sink, threats, quiet_targets, capture_targets, ~occupied)
         if board.en_passant() != Square.none: add_en_passant(board, ref sink, king, threats.checkers, occupied)
-        if mode.stops_at_first and sink.found_any: return
 
         add_piece_moves(board, ref sink, threats, quiet_targets, capture_targets, occupied)
-        if mode.stops_at_first and sink.found_any: return
 
     add_king_moves(board, ref sink, king, theirs, occupied, threats.checkers)
 
@@ -180,13 +178,6 @@ fn count_legal[us: Side](board: *Board) -> int
     var sink = Sink(null)
     generate[us, CountAll](board, ref sink)
     return sink.counted
-
-@noinline
-@nosave
-fn has_legal_move[us: Side](board: *Board) -> bool
-    var sink = Sink(null)
-    generate[us, FindAny](board, ref sink)
-    return sink.found_any
 
 fn legal_moves(board: *Board, buffer: *Move) -> int
     return legal[board.side](board, buffer)

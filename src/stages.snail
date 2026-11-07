@@ -16,12 +16,12 @@ extend Search
         score = 0
 
         let max_gain = max_material_gain(board)
-        if stand_pat + max_gain <= alpha
-            score = has_legal_move(board) ? stand_pat + max_gain : board.in_check() ? -MateValue + ply : 0
-            return true
-
         let moves = move_buffer(ply)
         let (tactical_count, has_quiet) = tactical(board, moves)
+
+        if stand_pat + max_gain <= alpha
+            score = tactical_count > 0 or has_quiet ? stand_pat + max_gain : board.in_check() ? -MateValue + ply : 0
+            return true
 
         if tactical_count > MaxOrderedTacticalMoves: return false
 

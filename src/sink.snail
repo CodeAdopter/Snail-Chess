@@ -4,7 +4,6 @@ enum Mode: u8
     WriteAll
     WriteTactical
     CountAll
-    FindAny
 
     @inline
     fn writes_quiets() -> bool
@@ -15,12 +14,8 @@ enum Mode: u8
         return self == WriteAll or self == WriteTactical
 
     @inline
-    fn stops_at_first() -> bool
-        return self == FindAny
-
-    @inline
     fn quiet_existence_enough() -> bool
-        return self == WriteTactical or self == FindAny
+        return self == WriteTactical
 
     @inline
     fn writes(kind: MoveKind) -> bool
@@ -30,10 +25,6 @@ struct Sink
     buffer: *Move
     written: int
     counted: int
-
-    @inline
-    fn found_any() -> bool
-        return written | counted != 0
 
     @inline
     fn add_piece_moves[mode: Mode](from: Square, targets: Bitboard, kind: MoveKind)

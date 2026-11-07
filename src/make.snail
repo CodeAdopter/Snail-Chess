@@ -10,12 +10,11 @@ extend Board
         let to = move.to
         let kind = move.kind
         let next = enter_ply(from, to)
-        if kind == Quiet
-            relocate(from, to)
-        elif kind == Capture
-            let victim = squares[to]
-            next.captured = victim
-            clear_bits(victim, to)
+        if kind == Quiet or kind == Capture
+            if kind == Capture
+                let victim = squares[to]
+                next.captured = victim
+                clear_bits(victim, to)
             relocate(from, to)
         else
             make_special(move, next)
@@ -25,11 +24,9 @@ extend Board
         let from = move.from
         let to = move.to
         let kind = move.kind
-        if kind == Quiet
+        if kind == Quiet or kind == Capture
             relocate(to, from)
-        elif kind == Capture
-            relocate(to, from)
-            put(history[ply].captured, to)
+            if kind == Capture: put(history[ply].captured, to)
         else
             unmake_special(move)
         ply -= 1

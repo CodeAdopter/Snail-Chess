@@ -6,20 +6,7 @@ const MateValue = 30000
 const MateBound = MateValue - 1000
 const DeltaMargin = 200
 
-const EvalCacheSize = 1 << 16
-var eval_cache: [EvalCacheSize]u64
-
 extend Search
-    @inline
-    fn cached_evaluate[us: Side](board: *Board, key: u64) -> int
-        let slot = &eval_cache[(key & (EvalCacheSize - 1)) as int]
-        let tag = key & ~0xFFFF
-        let e = *slot
-        if e & ~0xFFFF == tag: return (e & 0xFFFF) as u16 as i16 as int
-        let v = evaluate[us](board)
-        *slot = tag | (v as i16 as u16) as u64
-        return v
-
     @inline
     fn pawn_entry(white: Bitboard, black: Bitboard) -> *PawnEntry
         let entry = &pawn_entries[pawn_slot(white, black)]
