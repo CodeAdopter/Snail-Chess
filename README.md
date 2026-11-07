@@ -24,6 +24,7 @@ An open source chess engine designed for [Snail Chess GUI](https://github.com/Co
 | [1.15](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.15) | ~2912 | 23.0 Mnps | 59 KB | ~3612 |
 | [1.16](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.16) | ~3056 | 24.9 Mnps | 83 KB | ~3737 |
 | [1.17](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.17) | ~3230 | 22.8 Mnps | 84 KB | ~3898 |
+| [1.18](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.18) | ~3288 | 20.9 Mnps | 95 KB | ~3933 |
 
 Start with the engine's Elo, then:
 
@@ -39,7 +40,7 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 | # | Engine | Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|---|---|
 | 1 | c4ke 3.0 | 3307 | 3.03 Mnps | 4 KB | 3947 |
-| 2 | **Snail Chess 1.17** | ~3230 | 22.8 Mnps | 84 KB | **~3898** |
+| 2 | **Snail Chess 1.18** | ~3288 | 20.9 Mnps | 95 KB | **~3933** |
 | 3 | ice4 6.1 | 3173 | 2.98 Mnps | 4 KB | 3811 |
 | 4 | Stockfish 11 | 3563 | 3.70 Mnps | 1.1 MB | 3743 |
 | 5 | Sirius 9.0 | 3529 | 2.84 Mnps | 537 KB | 3735 |
