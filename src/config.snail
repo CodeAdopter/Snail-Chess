@@ -54,6 +54,8 @@ const ReductionMinDepth = 3
 const ReductionBase = 56
 const ReductionDivisor = 258
 const ReductionHistoryDivisor = 8192
+const ReductionNotImproving = 1
+const ReductionPvNode = 1
 
 const LateMovePruningMinDepth = 3
 const LateMovePruningDepth = 8

@@ -87,6 +87,7 @@ extend Search
 
     @inline
     fn search_moves[us: Side](board: *Board, depth: int, alpha: int, beta: int, ply: int, hash: u64, table_move: Move, table_key: u64, stand_pat: int, improving: bool) -> (int, Move, bool)
+        let pv_node = beta - alpha > 1
         var best_score = -Infinity
         var best_move = NoMove
         var result = 0
@@ -171,7 +172,7 @@ extend Search
                 if depth > 1
                     if ply == 0: root_move_start = node_count
                     let first = best_score == -Infinity
-                    let reduction = (reducing and not first and move.code < FirstTactical) ? late_move_reduction(depth, i, quiet_score(board, move, counter_row(ply), follow_row(ply))) : 0
+                    let reduction = (reducing and not first and move.code < FirstTactical) ? late_move_reduction(depth, i, quiet_score(board, move, counter_row(ply), follow_row(ply)), (improving ? 0 : ReductionNotImproving) - (pv_node ? ReductionPvNode : 0)) : 0
                     score = search_child(board, move, key, depth, alpha, beta, ply, first, reduction)
                 else
                     board.make(move)
