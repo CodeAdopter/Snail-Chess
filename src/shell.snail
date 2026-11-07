@@ -1,7 +1,7 @@
 use primitives
 use weights
 
-const ShellLanes = 32
+const ShellLanes = 64
 const ShellWindow = 2 * ShellLanes
 const ShellSize = 4 * ShellLanes
 const ShellGatePieces = [0, 0, 0, 1, 2, 0, 3, 0, 4, 0, 5, 0, 6, 7]
@@ -17,25 +17,36 @@ fn shell_row(piece: Piece, sq: Square) -> *i16
 @inline
 fn shell_add(acc: *i16, piece: Piece, sq: Square)
     let at = acc + shell_window[piece]
-    (i16x64.load(at) + i16x64.load(shell_row(piece, sq))).store(at)
+    let row = shell_row(piece, sq)
+    (i16x64.load(at) + i16x64.load(row)).store(at)
+    (i16x64.load(at + 64) + i16x64.load(row + 64)).store(at + 64)
 
 @inline
 fn shell_sub(acc: *i16, piece: Piece, sq: Square)
     let at = acc + shell_window[piece]
-    (i16x64.load(at) - i16x64.load(shell_row(piece, sq))).store(at)
+    let row = shell_row(piece, sq)
+    (i16x64.load(at) - i16x64.load(row)).store(at)
+    (i16x64.load(at + 64) - i16x64.load(row + 64)).store(at + 64)
 
 @inline
 fn shell_move(acc: *i16, piece: Piece, from: Square, to: Square)
     let at = acc + shell_window[piece]
-    (i16x64.load(at) + i16x64.load(shell_row(piece, to)) - i16x64.load(shell_row(piece, from))).store(at)
+    let a = shell_row(piece, to)
+    let b = shell_row(piece, from)
+    (i16x64.load(at) + i16x64.load(a) - i16x64.load(b)).store(at)
+    (i16x64.load(at + 64) + i16x64.load(a + 64) - i16x64.load(b + 64)).store(at + 64)
 
 @inline
-fn shell_eval(acc: *i16) -> int
+fn shell_half(acc: *i16) -> int
     let white_gate = clamp(i16x32.load(acc + ShellLanes), i16x32.splat(0), i16x32.splat(ShellGateLimit)) << ShellGateShift
     let black_gate = clamp(i16x32.load(acc + 2 * ShellLanes), i16x32.splat(0), i16x32.splat(ShellGateLimit)) << ShellGateShift
     let white = (white_gate as i32x32 * i16x32.load(acc) as i32x32 >> 16) as i16x32
     let black = (black_gate as i32x32 * i16x32.load(acc + 3 * ShellLanes) as i32x32 >> 16) as i16x32
     return ((white - black) as i32x32).sum
+
+@inline
+fn shell_eval(acc: *i16) -> int
+    return shell_half(acc) + shell_half(acc + 32)
 
 fn shell_reset(acc: *i16)
     copy(acc, &shell_start[0], ShellSize)
