@@ -37,16 +37,12 @@ fn shell_move(acc: *i16, piece: Piece, from: Square, to: Square)
     (i16x64.load(at + 64) + i16x64.load(a + 64) - i16x64.load(b + 64)).store(at + 64)
 
 @inline
-fn shell_half(acc: *i16) -> int
-    let white_gate = clamp(i16x32.load(acc + ShellLanes), i16x32.splat(0), i16x32.splat(ShellGateLimit)) << ShellGateShift
-    let black_gate = clamp(i16x32.load(acc + 2 * ShellLanes), i16x32.splat(0), i16x32.splat(ShellGateLimit)) << ShellGateShift
-    let white = (white_gate as i32x32 * i16x32.load(acc) as i32x32 >> 16) as i16x32
-    let black = (black_gate as i32x32 * i16x32.load(acc + 3 * ShellLanes) as i32x32 >> 16) as i16x32
-    return ((white - black) as i32x32).sum
-
-@inline
 fn shell_eval(acc: *i16) -> int
-    return shell_half(acc) + shell_half(acc + 32)
+    let white_gate = clamp(i16x64.load(acc + ShellLanes), i16x64.splat(0), i16x64.splat(ShellGateLimit)) << ShellGateShift
+    let black_gate = clamp(i16x64.load(acc + 2 * ShellLanes), i16x64.splat(0), i16x64.splat(ShellGateLimit)) << ShellGateShift
+    let white = (white_gate as i32x64 * i16x64.load(acc) as i32x64 >> 16) as i16x64
+    let black = (black_gate as i32x64 * i16x64.load(acc + 3 * ShellLanes) as i32x64 >> 16) as i16x64
+    return ((white - black) as i32x64).sum
 
 fn shell_reset(acc: *i16)
     copy(acc, &shell_start[0], ShellSize)
