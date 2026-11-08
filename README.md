@@ -25,6 +25,7 @@ An open source chess engine designed for [Snail Chess GUI](https://github.com/Co
 | [1.16](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.16) | ~3056 | 24.9 Mnps | 83 KB | ~3737 |
 | [1.17](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.17) | ~3230 | 22.8 Mnps | 84 KB | ~3898 |
 | [1.18](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.18) | ~3288 | 20.9 Mnps | 95 KB | ~3933 |
+| [1.19](https://github.com/CodeAdopter/Snail-Chess/releases/tag/v1.19) | ~3283 | 20.8 Mnps | 95 KB | ~3927 |
 
 ## License
 

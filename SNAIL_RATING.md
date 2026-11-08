@@ -12,7 +12,7 @@ $$\text{Snail Rating} = \text{Elo} + 100 \log_2(\text{Mnps}) + 60 \log_2\left(\f
 | # | Engine | Rating | Search Speed | Size | Snail Rating |
 |---|---|---|---|---|---|
 | 1 | c4ke 3.0 | 3307 | 3.03 Mnps | 4 KB | 3947 |
-| 2 | **Snail Chess 1.18** | ~3288 | 20.9 Mnps | 95 KB | **~3933** |
+| 2 | **Snail Chess 1.19** | ~3283 | 20.8 Mnps | 95 KB | **~3927** |
 | 3 | ice4 6.1 | 3173 | 2.98 Mnps | 4 KB | 3811 |
 | 4 | Stockfish 11 | 3563 | 3.70 Mnps | 1.1 MB | 3743 |
 | 5 | Sirius 9.0 | 3529 | 2.84 Mnps | 537 KB | 3735 |
