@@ -1,5 +1,5 @@
 const EngineName = "Snail Chess"
-const EngineVersion = "1.18"
+const EngineVersion = "1.19"
 const EngineAuthor = "Angelo Wolff"
 
 const DefaultThreads = 1
