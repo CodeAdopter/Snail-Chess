@@ -2,9 +2,9 @@
 
 Commit 97e1f59
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1623 | 41.1 Mnps | 46 KB | ~2428 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1623 | 41.1 Mnps | 11.0 | 46 KB | ~2358 |
 
 ## Engine
 

@@ -2,9 +2,9 @@
 
 Commit 2007117
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2900 | 26.4 Mnps | 53 KB | ~3629 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2900 | 26.4 Mnps | 20.9 | 53 KB | ~3638 |
 
 ## Engine
 

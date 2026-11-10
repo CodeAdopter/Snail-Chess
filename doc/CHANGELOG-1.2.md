@@ -2,9 +2,9 @@
 
 Commit deb1f33
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1524 | 30.6 Mnps | 45 KB | ~2289 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1524 | 30.6 Mnps | 10.2 | 45 KB | ~2215 |
 
 ## Engine
 

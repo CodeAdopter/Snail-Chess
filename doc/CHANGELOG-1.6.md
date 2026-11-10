@@ -2,9 +2,9 @@
 
 Commit d465f8e
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1773 | 33.9 Mnps | 49 KB | ~2545 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1773 | 33.9 Mnps | 16.8 | 49 KB | ~2522 |
 
 ## Engine
 

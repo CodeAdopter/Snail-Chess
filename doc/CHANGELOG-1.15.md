@@ -2,9 +2,9 @@
 
 Commit 7e05f81
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2912 | 23.0 Mnps | 59 KB | ~3612 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2912 | 23.0 Mnps | 20.9 | 59 KB | ~3621 |
 
 ## Engine
 

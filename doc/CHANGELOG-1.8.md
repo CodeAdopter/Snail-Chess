@@ -2,9 +2,9 @@
 
 Commit ed3e2d3
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2658 | 29.5 Mnps | 50 KB | ~3408 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2658 | 29.5 Mnps | 14.0 | 50 KB | ~3340 |
 
 ## Engine
 

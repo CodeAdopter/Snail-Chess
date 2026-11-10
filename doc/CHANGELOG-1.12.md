@@ -2,9 +2,9 @@
 
 Commit 98fefd8
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2886 | 26.8 Mnps | 52 KB | ~3618 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2886 | 26.8 Mnps | 20.9 | 52 KB | ~3628 |
 
 ## Engine
 

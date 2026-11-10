@@ -2,9 +2,9 @@
 
 Commit 5025c69
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2789 | 25.7 Mnps | 53 KB | ~3514 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2789 | 25.7 Mnps | 20.7 | 53 KB | ~3521 |
 
 ## Engine
 

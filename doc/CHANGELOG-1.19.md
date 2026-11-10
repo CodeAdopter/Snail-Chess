@@ -2,9 +2,9 @@
 
 Commit 322fb0e
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~3283 | 20.8 Mnps | 95 KB | ~3927 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~3283 | 20.8 Mnps | 22.2 | 95 KB | ~3952 |
 
 ## Engine
 

@@ -2,9 +2,9 @@
 
 Commit 0c70ca8
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2648 | 28.6 Mnps | 52 KB | ~3390 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2648 | 28.6 Mnps | 13.9 | 52 KB | ~3321 |
 
 ## Engine
 

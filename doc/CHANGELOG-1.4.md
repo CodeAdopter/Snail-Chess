@@ -2,9 +2,9 @@
 
 Commit 0a403d3
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1788 | 35.8 Mnps | 48 KB | ~2569 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1788 | 35.8 Mnps | 15.7 | 48 KB | ~2538 |
 
 ## Engine
 

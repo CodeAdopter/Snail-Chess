@@ -2,9 +2,9 @@
 
 Commit b10cb45
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1546 | 30.3 Mnps | 45 KB | ~2309 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1546 | 30.3 Mnps | 10.2 | 45 KB | ~2233 |
 
 ## Engine
 

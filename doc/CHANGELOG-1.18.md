@@ -2,9 +2,9 @@
 
 Commit 29329af
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~3288 | 20.9 Mnps | 95 KB | ~3933 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~3288 | 20.9 Mnps | 21.9 | 95 KB | ~3954 |
 
 ## Engine
 

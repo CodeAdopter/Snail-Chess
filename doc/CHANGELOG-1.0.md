@@ -2,9 +2,9 @@
 
 Commit af9ed78
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1340 | 30.3 Mnps | 46 KB | ~2102 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1340 | 30.3 Mnps | 10.2 | 46 KB | ~2037 |
 
 ## Engine
 

@@ -2,9 +2,9 @@
 
 Commit 2d23992
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~2735 | 26.9 Mnps | 52 KB | ~3468 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~2735 | 26.9 Mnps | 20.8 | 52 KB | ~3476 |
 
 ## Engine
 

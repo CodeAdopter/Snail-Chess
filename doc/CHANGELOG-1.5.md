@@ -2,9 +2,9 @@
 
 Commit 3badedd
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~1812 | 34.6 Mnps | 49 KB | ~2587 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~1812 | 34.6 Mnps | 16.0 | 49 KB | ~2558 |
 
 ## Engine
 

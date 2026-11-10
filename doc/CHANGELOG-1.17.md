@@ -2,9 +2,9 @@
 
 Commit a909801
 
-| Rating | Search Speed | Size | Snail Rating |
-|---|---|---|---|
-| ~3230 | 22.8 Mnps | 84 KB | ~3898 |
+| Rating | Search Speed | Depth | Size | Snail Rating |
+|---|---|---|---|---|
+| ~3230 | 22.8 Mnps | 21.4 | 84 KB | ~3914 |
 
 ## Engine
 
