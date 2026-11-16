@@ -1,0 +1,17 @@
+# Which moves made at once are premoves (tools/human/premove_fit.py): P(the move is a premove), given
+# that it takes 0 seconds on a whole-second clock, logistic in these features:
+#   bias
+#   recapture
+#   other capture
+#   log2 of the clock in seconds, at most 6, minus 6
+#   first ten plies
+#   increment
+#   the opponent moved at once
+#   the mover's last move was a premove
+#   bullet
+#   rapid or slower
+#   (rating - 1500) / 500
+# Fitted on 90038 such moves of 13293 Lichess games with centisecond clocks. Generated; do not edit.
+
+const PremoveFeatures = 11
+const PremoveW: [11]f32 = [-0.687495, 1.88, 0.109401, -0.217257, 0.77822, -0.355045, -0.947626, 1.11607, -0.0132885, 0.0421026, -0.00329205]

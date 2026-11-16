@@ -1,0 +1,161 @@
+# The game as the human net sees it (src/human.snail): every position from the first one the GUI
+# sent, both clocks and both ratings, and from them the net's inputs for the position to move in.
+
+use ganglia
+use humancheck
+
+const HumanMinElo = 400
+const HumanNetMinElo = 600       # the net's lowest trained rating; below it, weakness comes from temperature
+const HumanMaxElo = 2800
+const HumanDefaultClock = 600
+const HumanMostGap = 800         # the widest rating gap the net is told (hn_input)
+
+# The game as the net sees it: every position from the first one the GUI sent.
+struct HumanGame
+    squares: [..]u8           # 64 bytes per position
+    keys: [..]u64
+    first_ply: int            # the game ply of the first position (from a FEN's move number)
+    clocked: bool             # whether this game's go commands have carried clocks
+    own_start: int            # seconds, from the first clocked go of the game
+    opp_start: int
+    last_ply: int             # ply of the last clocked go, and the opponent's clock then (ms)
+    last_opp_clock: i64
+    last_own_clock: i64       # the mover's own clock then (ms)
+    own_think1: int           # seconds the mover spent on their last move and on the one before, as
+    own_think2: int           # of the position hn_input last saw (GlNoClock when unknown)
+    premove_ply: int = -10    # ply of the last move this engine played as a premove (src/humanpremove.snail)
+
+struct HumanClocks
+    known: bool
+    own_ms: i64
+    opp_ms: i64
+    own_inc_ms: i64
+    opp_inc_ms: i64
+
+var hn_game: HumanGame
+var hn_opponent_elo = 0
+
+fn hn_new_game()
+    hn_game.clocked = false
+    hn_game.last_ply = -10
+    hn_game.premove_ply = -10
+
+# The position the GUI's position command starts from; first_ply from its move number.
+fn hn_begin(board: *Board, first_ply: int)
+    hn_game.squares.clear()
+    hn_game.keys.clear()
+    hn_game.first_ply = first_ply
+    hn_record(board)
+
+fn hn_record(board: *Board)
+    let at = hn_game.squares.len
+    hn_game.squares.resize(at + 64)
+    copy(&hn_game.squares[at], &board.squares[0] as *u8, 64)
+    hn_game.keys.push(board.key)
+
+@inline
+fn hn_frame(sq: int, flip: bool) -> int
+    return flip ? sq ^ 56 : sq
+
+fn hn_speed(base: int, increment: int) -> int
+    let total = base + 40 * increment
+    return total < 30 ? 0 : total < 180 ? 1 : total < 480 ? 2 : total < 1500 ? 3 : 4
+
+fn hn_input(board: *Board, input: *GlInput, own_elo: int, clocks: HumanClocks)
+    let stm = board.side as int
+    let flip = stm == 1
+    let positions = hn_game.keys.len as int
+    let now = positions - 1
+    for k in 0..9
+        let at = now - k
+        for sq in 0..64
+            var code = 13
+            if at >= 0
+                let piece = hn_game.squares[at * 64 + sq] as Piece
+                code = piece == NoPiece ? 0 : piece.kind as int + (piece.side as int == stm ? 0 : 6)
+            input.codes[k * 64 + hn_frame(sq, flip)] = code as u8
+    let ep = board.en_passant() as int
+    input.ep = ep >= 64 ? 64 : hn_frame(ep, flip)
+    let rights = board.castling() as int
+    input.castling = flip ? (rights >> 2 & 3) | (rights & 3) << 2 : rights
+    let halfmove = board.state().clock as int
+    input.halfmove = min(halfmove, 255)
+    var repeats = 0
+    var back = now - 2
+    while back >= 0 and back >= now - halfmove
+        if hn_game.keys[back] == hn_game.keys[now]: repeats += 1
+        back -= 2
+    input.repeats = min(repeats, 255)
+    let ply = hn_game.first_ply + now
+    input.ply = ply
+    input.kind = 0
+    input.think = GlNoClock
+    input.own_rating = clamp(hn_net_elo(own_elo), HumanNetMinElo, HumanMaxElo)
+    # Players more than HumanMostGap apart are next to absent from the games the net learned from
+    # (0.2% of blitz positions), and told a wider gap its think-time head moves at once: on 26% of
+    # a 1500's moves against a 2700, where real players facing any gap do on 7 to 12%. So the
+    # opponent is told as at most that far from the mover.
+    input.opp_rating = input.own_rating
+    if hn_opponent_elo > 0: input.opp_rating = clamp(clamp(hn_opponent_elo, input.own_rating - HumanMostGap, input.own_rating + HumanMostGap), HumanNetMinElo, HumanMaxElo)
+
+    if not clocks.known
+        # No clock (go depth, nodes, movetime, infinite): a rapid game with plenty of time.
+        input.own_clock = HumanDefaultClock
+        input.opp_clock = HumanDefaultClock
+        input.own_start = HumanDefaultClock
+        input.opp_start = HumanDefaultClock
+        input.base = HumanDefaultClock
+        input.increment = 0
+        input.opp_think = ply >= 3 ? GlNoClock : 0
+        input.speed = hn_speed(HumanDefaultClock, 0)
+        hn_own_thinks(ply, false, 0, 0)
+        return
+    let own = (clocks.own_ms / 1000) as int
+    let opp = (clocks.opp_ms / 1000) as int
+    if not hn_game.clocked
+        hn_game.clocked = true
+        hn_game.own_start = own
+        hn_game.opp_start = opp
+    let increment = (clocks.own_inc_ms / 1000) as int
+    input.own_clock = own
+    input.opp_clock = opp
+    input.own_start = hn_game.own_start
+    input.opp_start = hn_game.opp_start
+    input.base = max(hn_game.own_start, hn_game.opp_start)
+    input.increment = increment
+    input.speed = hn_speed(input.base, increment)
+    # The opponent's last think time, from how far their clock moved since our last move.
+    if ply < 3
+        input.opp_think = 0
+    elif hn_game.last_ply == ply - 2
+        input.opp_think = max(((hn_game.last_opp_clock - clocks.opp_ms + clocks.opp_inc_ms) / 1000) as int, 0)
+    else
+        input.opp_think = GlNoClock
+    hn_own_thinks(ply, hn_game.last_ply == ply - 2, clocks.own_ms, clocks.own_inc_ms)
+    hn_game.last_ply = ply
+    hn_game.last_opp_clock = clocks.opp_ms
+    hn_game.last_own_clock = clocks.own_ms
+
+# The mover's own think times on their last two moves, for the think-time net (src/humantime.snail),
+# into hn_game: from how far their clock moved between their turns, as the training records have
+# them. A side's first move counts as 0 seconds, since Lichess does not time it. followed: the
+# mover's last turn was a clocked go too, so the clock then is known.
+fn hn_own_thinks(ply: int, followed: bool, own_ms: i64, own_inc_ms: i64)
+    var think1 = GlNoClock
+    var think2 = GlNoClock
+    if ply >= 2 and ply < 4: think1 = 0
+    elif ply >= 4 and followed: think1 = max(((hn_game.last_own_clock - own_ms + own_inc_ms) / 1000) as int, 0)
+    # The move before the last: what the last turn worked out as its own last move.
+    if ply >= 4 and ply < 6: think2 = 0
+    elif ply >= 6 and followed: think2 = hn_game.own_think1
+    hn_game.own_think1 = think1
+    hn_game.own_think2 = think2
+
+# "UCI_Opponent [GM|IM|FM|WGM|WIM|none] [<elo>|none] [computer|human] <name>": the opponent's rating.
+fn hn_set_opponent(words: *str, count: int)
+    hn_opponent_elo = 0
+    for i in 4..min(count, 6)
+        let w = words[i]
+        if w.len > 0 and w[0] >= '0' and w[0] <= '9'
+            hn_opponent_elo = parse_int(w) as int
+            return

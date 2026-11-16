@@ -1,6 +1,8 @@
 use threads
 use perft
 use bench
+use human
+use humandebug
 
 const MaxWords = 1024
 
@@ -10,32 +12,104 @@ struct Uci
     limits: SearchLimits
     search_thread: u64
     searching: bool
+    stop_seen: bool @volatile    # a stop came during this search (the human check's own search clears the engine's flag)
     searched_this_game: bool
     custom_position: bool
     game_ply: int
+    clock_known: bool
+    white_ms: i64
+    black_ms: i64
+    white_inc: i64
+    black_inc: i64
 
     fn stop_search()
         if not searching: return
+        stop_seen = true
         threads.stop()
         join(search_thread)
         searching = false
 
     fn start_search()
         threads.reset_stop()
+        stop_seen = false
         searching = true
         search_thread = spawn(run_uci_search, self)
 
 fn run_uci_search(uci: *Uci)
     let threads = uci.threads
+    if threads.strength.limited and hn_ready
+        run_human_move(uci)
+        return
+    let start = now_ms()
     let best = threads.choose_move(uci.board, uci.limits, uci.game_ply)
     if best == NoMove
         print("bestmove 0000")
         return
+    # Human Mode without a move net (Human Net <none>): the search chose the move. With a
+    # think-time net it still takes a person's time over it, reported as the move net's play is.
+    if threads.strength.limited and hn_time_ready
+        let white = uci.board.side == White
+        let clocks = HumanClocks(known: uci.clock_known, own_ms: white ? uci.white_ms : uci.black_ms, opp_ms: white ? uci.black_ms : uci.white_ms, own_inc_ms: white ? uci.white_inc : uci.black_inc, opp_inc_ms: white ? uci.black_inc : uci.white_inc)
+        let (think, premove) = hn_think_for(uci.board, threads.strength.elo, clocks, &threads.strength, best)
+        write("info string human move ")
+        write_move(best)
+        write(" think {think:.2}")
+        if premove: write(" premove")
+        print()
+        if hn_timing
+            while (now_ms() - start) < think * 1000.0 and not threads.main.stop_requested and not uci.stop_seen
+                sleep_ms(10)
     write("bestmove ")
     write_move(best)
     if threads.last_line_length > 1
         write(" ponder ")
         write_move(threads.last_line[1])
+    print()
+
+# UCI_LimitStrength with the human net (src/human.snail): the net picks a think time, the move
+# given that time, and whether to resign. For the GUI it reports
+#   info string human move <move> prob <p> think <seconds> expected <score> resign <chance>
+# with "premove" as the line's last word when the move is a premove (Human Premove; which moves
+# are is src/humanpremove.snail): the GUI then plays it with no wait and takes no time off the
+# engine's clock,
+# and, when the player gives up, "info string human resign" before the bestmove (which UCI still
+# needs). With HumanTiming on, the engine itself waits the think time before answering.
+fn run_human_move(uci: *Uci)
+    let start = now_ms()
+    let white = uci.board.side == White
+    let clocks = HumanClocks(known: uci.clock_known, own_ms: white ? uci.white_ms : uci.black_ms, opp_ms: white ? uci.black_ms : uci.white_ms, own_inc_ms: white ? uci.white_inc : uci.black_inc, opp_inc_ms: white ? uci.black_inc : uci.white_inc)
+    let c = hn_choose(uci.board, uci.threads.strength.elo, clocks, &uci.threads.strength, uci.threads.main)
+    if c.move == NoMove
+        print("bestmove 0000")
+        return
+    let e = clamp(c.expected, 0.001, 0.999)
+    var cp = round(400.0 * log10(e / (1.0 - e))) as int    # within +-1200
+    # Human Resign Score: a resignation also shows as cp -30000, for match runners that only read
+    # scores (snailfast: -resign movecount=1 score=20000 twosided=false ends the game there)
+    if c.resign and hn_resign_score: cp = -30000
+    let win = round(c.win * 1000.0) as int
+    let loss = round(c.loss * 1000.0) as int
+    write("info depth 1 seldepth 1 score cp {cp} wdl {win} {1000 - win - loss} {loss} nodes 1 time {(now_ms() - start) as i64} pv ")
+    write_move(c.move)
+    print()
+    write("info string human move ")
+    write_move(c.move)
+    write(" prob {c.prob:.3} think {c.think_ms as f64 / 1000.0:.2} expected {c.expected:.3} resign {c.resign_p:.4}")
+    if c.checked
+        write(" check {c.max_loss:.2} penalty {c.penalty:.1} kept {c.kept} of {c.candidates}")
+        if c.rescue: write(" rescue")
+    if c.premove: write(" premove")
+    print()
+    if c.resign: print("info string human resign")
+    if hn_timing
+        while (now_ms() - start) < c.think_ms as f64 and not uci.threads.main.stop_requested and not uci.stop_seen
+            sleep_ms(10)
+    # go infinite (analysis): UCI wants bestmove only after stop.
+    if uci.limits.until_stopped
+        while not uci.threads.main.stop_requested and not uci.stop_seen
+            sleep_ms(5)
+    write("bestmove ")
+    write_move(c.move)
     print()
 
 fn print_version()
@@ -61,7 +135,25 @@ fn uci_loop()
             print("id author {EngineAuthor}")
             print("option name Threads type spin default {DefaultThreads} min 1 max {MaxThreads}")
             print("option name UCI_LimitStrength type check default false")
-            print("option name UCI_Elo type spin default {DefaultStrengthElo} min {MinStrengthElo} max {MaxStrengthElo}")
+            print("option name UCI_Elo type spin default {DefaultStrengthElo} min {HumanMinElo} max {MaxStrengthElo}")
+            print("option name UCI_Opponent type string default <empty>")
+            print("option name Human Resign type check default true")
+            print("option name Human Timing type check default false")
+            print("option name Human Pace type spin default {HumanDefaultPace} min 25 max 400")
+            print("option name Human Premove type check default true")
+            print("option name Human Temperature type spin default {HumanDefaultTemperature} min 0 max 300")
+            print("option name Human Check type check default true")
+            print("option name Human Check Nodes type spin default {HumanDefaultCheckNodes} min 1000 max 100000000")
+            print("option name Human Check Penalty type spin default -1 min -1 max 1000")
+            print("option name Human Check Temperature type spin default -1 min -1 max 1000")
+            print("option name Human Tail type spin default -1 min -1 max 100")
+            print("option name Human Penalty Centi type spin default -100001 min -100001 max 100000")
+            print("option name Human Net Elo type spin default 0 min 0 max 2800")
+            print("option name Human Check Moves type spin default 0 min 0 max 15")
+            print("option name Human Blunder type spin default -1 min -1 max 100")
+            print("option name Human Resign Score type check default false")
+            print("option name Human Net type string default <embedded>")
+            print("option name Human Time Net type string default <none>")
             print("option name Style type combo default Balanced var Aggressive var Balanced var Passive")
             print("option name MasterBook type string default <empty>")
             print("option name GambitBook type string default <empty>")
@@ -78,6 +170,7 @@ fn uci_loop()
             uci.threads.clear_hash()
             uci.searched_this_game = false
             uci.custom_position = false
+            hn_new_game()
         elif command == "setoption"
             uci.stop_search()
             set_option(uci.threads, line, &words[0], count)
@@ -92,27 +185,96 @@ fn uci_loop()
                 uci.searched_this_game = true
                 uci.start_search()
         elif command == "stop"
+            uci.stop_seen = true
             uci.threads.stop()
         elif command == "bench"
             uci.stop_search()
             run_bench(count > 1 ? parse_int(words[1]) : DefaultBenchDepth)
         elif command == "version"
             print_version()
+        elif command == "hninput"
+            var times: [4]i64
+            for i in 1..count - 1
+                let at = words[i] == "wtime" ? 0 : words[i] == "btime" ? 1 : words[i] == "winc" ? 2 : words[i] == "binc" ? 3 : -1
+                if at >= 0: times[at] = parse_int(words[i + 1])
+            let white = uci.board.side == White
+            let clocks = HumanClocks(known: times[0] > 0 or times[1] > 0, own_ms: white ? times[0] : times[1], opp_ms: white ? times[1] : times[0], own_inc_ms: white ? times[2] : times[3], opp_inc_ms: white ? times[3] : times[2])
+            hn_print_input(uci.board, uci.threads.strength.elo, clocks)
+        elif command == "hncheck"
+            # hncheck [wtime t] [btime t] [winc t] [binc t] [human <move>]: the strength check, exact
+            uci.stop_search()
+            var times: [4]i64
+            var extra = NoMove
+            for i in 1..count - 1
+                let at = words[i] == "wtime" ? 0 : words[i] == "btime" ? 1 : words[i] == "winc" ? 2 : words[i] == "binc" ? 3 : -1
+                if at >= 0: times[at] = parse_int(words[i + 1])
+                if words[i] == "human": extra = parse_move(uci.board, words[i + 1])
+            let white = uci.board.side == White
+            let clocks = HumanClocks(known: times[0] > 0 or times[1] > 0, own_ms: white ? times[0] : times[1], opp_ms: white ? times[1] : times[0], own_inc_ms: white ? times[2] : times[3], opp_inc_ms: white ? times[3] : times[2])
+            uci.threads.reset_stop()
+            hn_print_check(uci.board, uci.threads.strength.elo, clocks, uci.threads.main, extra)
+        elif command == "hnrecord"
+            # hnrecord [wtime t] [btime t] [winc t] [binc t] [move <move>]: the think-time net's record
+            var times: [4]i64
+            var played = NoMove
+            for i in 1..count - 1
+                let at = words[i] == "wtime" ? 0 : words[i] == "btime" ? 1 : words[i] == "winc" ? 2 : words[i] == "binc" ? 3 : -1
+                if at >= 0: times[at] = parse_int(words[i + 1])
+                if words[i] == "move": played = parse_move(uci.board, words[i + 1])
+            let white = uci.board.side == White
+            let clocks = HumanClocks(known: times[0] > 0 or times[1] > 0, own_ms: white ? times[0] : times[1], opp_ms: white ? times[1] : times[0], own_inc_ms: white ? times[2] : times[3], opp_inc_ms: white ? times[3] : times[2])
+            hn_print_record(uci.board, uci.threads.strength.elo, clocks, played)
         elif command == "quit"
             break
     uci.stop_search()
     uci.threads.finish_game()
 
+# "setoption name <name> value <value>": a name may be several words ("Human Resign"). The Human
+# options also answer to their one-word spellings (HumanResign). Human Mode is switched by the
+# standard pair alone, UCI_LimitStrength and UCI_Elo; Human Playstyle and Human Elo, which the
+# engine once listed beside them as a second switch for the same state, are still understood.
 fn set_option(threads: *SearchThreads, line: str, words: *str, count: int)
-    if count < 5 or words[1] != "name" or words[3] != "value": return
-    let name = words[2]
-    let text = words[4]
+    if count < 5 or words[1] != "name": return
+    var at = 3
+    while at < count and words[at] != "value"
+        at += 1
+    if at + 1 >= count: return
+    let first = words[2]
+    let end = words[at - 1]
+    let name = line[first.ptr - line.ptr..end.ptr - line.ptr + end.len]
+    let text = words[at + 1]
     let last = words[count - 1]
-    let rest = line[words[4].ptr - line.ptr..last.ptr - line.ptr + last.len]
+    let rest = line[text.ptr - line.ptr..last.ptr - line.ptr + last.len]
     let value = parse_int(text) as int
+    let on = text == "true" or text == "True"
     if name == "Threads" or name == "threads": threads.set_threads(clamp(value, 1, MaxThreads))
-    elif name == "UCI_LimitStrength": threads.strength.limited = text == "true"
-    elif name == "UCI_Elo": threads.strength.elo = clamp(value, MinStrengthElo, MaxStrengthElo)
+    elif name == "UCI_LimitStrength" or name == "Human Playstyle" or name == "HumanPlaystyle": threads.strength.limited = on
+    elif name == "UCI_Elo" or name == "Human Elo" or name == "HumanElo": threads.strength.elo = clamp(value, HumanMinElo, MaxStrengthElo)
+    elif name == "UCI_Opponent": hn_set_opponent(words, count)
+    elif name == "Human Temperature" or name == "HumanTemperature": hn_temperature = clamp(value, 0, 300)
+    elif name == "Human Resign" or name == "HumanResign": hn_resign_allowed = on
+    elif name == "Human Timing" or name == "HumanTiming": hn_timing = on
+    elif name == "Human Pace" or name == "HumanPace": hn_pace = clamp(value, 25, 400)
+    elif name == "Human Premove" or name == "HumanPremove": hn_premove = on
+    elif name == "Human Check" or name == "HumanCheck": hn_check = on
+    elif name == "Human Check Penalty" or name == "HumanCheckPenalty"
+        hn_check_penalty_set = value >= 0
+        hn_check_penalty_override = clamp(value, 0, 1000) as f64
+    elif name == "Human Penalty Centi" or name == "HumanPenaltyCenti"
+        # hundredths; -100001 (the default) uses the table, negative values prefer blunders
+        hn_check_penalty_set = value > -100001
+        hn_check_penalty_override = clamp(value, -100000, 100000) as f64 / 100.0
+    elif name == "Human Check Temperature" or name == "HumanCheckTemperature": hn_check_temperature_override = clamp(value, -1, 1000)
+    elif name == "Human Tail" or name == "HumanTail": hn_tail_override = clamp(value, -1, 100)
+    elif name == "Human Net Elo" or name == "HumanNetElo": hn_net_elo_override = clamp(value, 0, 2800)
+    elif name == "Human Check Moves" or name == "HumanCheckMoves": hn_check_moves_override = clamp(value, 0, 15)
+    elif name == "Human Blunder" or name == "HumanBlunder": hn_blunder_override = clamp(value, -1, 100)
+    elif name == "Human Resign Score" or name == "HumanResignScore": hn_resign_score = on
+    elif name == "Human Check Nodes" or name == "HumanCheckNodes": hn_check_nodes = clamp(parse_int(text), 1000, 100000000)
+    elif name == "Human Net" or name == "HumanNet"
+        if not hn_load_file(rest): print("info string cannot load human net {rest}")
+    elif name == "Human Time Net" or name == "HumanTimeNet"
+        if not hn_load_time_file(rest): print("info string cannot load human time net {rest}")
     elif name == "Style": threads.strength.style = text == "Aggressive" ? Aggressive : text == "Passive" ? Passive : Balanced
     elif name == "MasterBook": threads.opening.set_book(MasterLines, rest)
     elif name == "GambitBook": threads.opening.set_book(GambitLines, rest)
@@ -125,6 +287,7 @@ fn set_position(board: *Board, line: str, words: *str, count: int) -> (bool, int
     var custom = false
     if count > 1 and words[1] == "startpos"
         board.load_fen(StartFen)
+        hn_begin(board, 0)
     elif count > 1 and words[1] == "fen"
         while next < count and words[next] != "moves"
             next += 1
@@ -134,6 +297,8 @@ fn set_position(board: *Board, line: str, words: *str, count: int) -> (bool, int
         let end = last.ptr - line.ptr + last.len
         if not board.load_fen(line[start..end]): return false, 0
         custom = true
+        let fullmove = next >= 8 ? max(parse_int(words[7]) as int, 1) : 1
+        hn_begin(board, 2 * (fullmove - 1) + (board.side == Black ? 1 : 0))
     else
         return false, 0
 
@@ -142,6 +307,7 @@ fn set_position(board: *Board, line: str, words: *str, count: int) -> (bool, int
             let move = parse_move(board, words[i])
             if move == NoMove: break
             board.play(move)
+            hn_record(board)
             custom = true
 
     let plies = board.ply
@@ -177,6 +343,12 @@ fn parse_go(uci: *Uci, words: *str, count: int) -> bool
             let ms = now_ms() - start
             print("Nodes searched: {total}  {ms:.0} ms  {total / max(ms, 0.001) / 1000.0:.1} Mnps")
             return false
+
+    uci.clock_known = white_time > 0 or black_time > 0
+    uci.white_ms = white_time
+    uci.black_ms = black_time
+    uci.white_inc = white_increment
+    uci.black_inc = black_increment
 
     var limits: SearchLimits
     if infinite

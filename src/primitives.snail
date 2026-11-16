@@ -1,3 +1,5 @@
+use bitboard
+
 enum Side: u8
     White
     Black

@@ -1,0 +1,54 @@
+# Whether the player resigns (src/human.snail): the resignation model of src/resign.snail, on the
+# features it was fitted with.
+
+use ganglia
+use resign
+
+const HumanValues: [16]f32 = [0.0, 1.0, 3.0, 3.0, 5.0, 9.0, 0.0, 1.0, 3.0, 3.0, 5.0, 9.0, 0.0, 0.0, 0.0, 0.0]
+
+var hn_resign_allowed = true
+var hn_resign_score = false          # Human Resign Score: a resignation also reported as cp -30000
+
+# Board k's material in the mover's frame: (own - opponent, total, whether board k is before the game).
+fn hn_material(input: *GlInput, k: int) -> (f32, f32, bool)
+    var own: f32 = 0.0
+    var total: f32 = 0.0
+    var missing = true
+    for sq in 0..64
+        let code = input.codes[k * 64 + sq] as int
+        if code != 13: missing = false
+        let v = HumanValues[code]
+        total += v
+        if code >= 1 and code <= 6: own += v
+    return own - (total - own), total, missing
+
+# The resignation model (src/resign.snail, fitted by tools/human/resign_fit.py): the chance that a
+# player like this resigns now, from the same features the fit used.
+fn hn_resign_probability(input: *GlInput, expected: f64) -> f64
+    let (now, total, _) = hn_material(input, 0)
+    let (one, _, one_missing) = hn_material(input, 1)
+    let (two, _, two_missing) = hn_material(input, 2)
+    let before_one = one_missing ? now : one
+    let before_two = two_missing ? now : two
+    var x: [ResignFeatures]f32
+    let s = clamp(expected, 0.001, 0.999) as f32
+    x[0] = log(s / (1.0 - s)) / 4.0
+    x[1] = s
+    x[2] = clamp(now, -20.0, 20.0) / 10.0
+    x[3] = clamp(now - before_one, -10.0, 10.0) / 10.0
+    x[4] = clamp(now - before_two, -10.0, 10.0) / 10.0
+    x[5] = total / 40.0
+    x[6] = min(input.ply, 300) as f32 / 100.0
+    x[7] = (clamp(input.own_rating, 600, 2800) - 1500) as f32 / 500.0
+    x[8] = clamp(input.own_clock as f32 / max(input.own_start, 1) as f32, 0.0, 2.0)
+    x[9] = input.speed <= 1 ? 1.0 : 0.0
+    x[10] = input.speed == 2 ? 1.0 : 0.0
+    x[11] = input.speed == 3 ? 1.0 : 0.0
+    x[12] = input.speed >= 4 ? 1.0 : 0.0
+    var logit = ResignB2[0]
+    for h in 0..ResignHidden
+        var a = ResignB1[h]
+        for f in 0..ResignFeatures
+            a += ResignW1[h * ResignFeatures + f] * x[f]
+        logit += ResignW2[h] * tanh(a)
+    return 1.0 / (1.0 + exp(-logit as f64))

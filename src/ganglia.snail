@@ -1,0 +1,407 @@
+# Ganglia, the human-move net (tools/human/README.md): the forward pass of tools/human/net.py,
+# in float32. src/gnet.snail reads the net's file. A GlInput is one position in the mover's
+# frame, laid out like a training record (tools/human/README.md, "Training positions").
+
+extern include "math.h"
+extern "erff" fn gl_erf(x: f32) -> f32
+
+const GlInputs = 9 * 14 + 1 + 8
+const GlClasses = 4096 + 72
+const GlTimeBins = 32
+const GlNoClock = 0xFFFF
+# The rating and clock tables a time class uses: bullet and faster share blitz's, or have the
+# first table to themselves in a net trained on bullet too (GlNet.bullet_tables).
+const GlSpeedGroup = [1, 1, 1, 2, 3, 3]
+const GlSpeedGroupBullet = [0, 0, 1, 2, 3, 3]
+const GlIncrementBounds = [1, 2, 3, 5, 10, 15, 20, 30, 60]
+# Smolgen (net.Smolgen): each square compressed to 16 numbers, a 128-wide hidden layer, a
+# 128-number code per head, and one 128 -> 64 x 64 projection shared by every layer.
+const GlSmolCompress = 16
+const GlSmolHidden = 128
+const GlSmolCode = 128
+
+struct GlInput
+    codes: [9 * 64]u8      # board k plies ago, square: 0 empty, 1-6 own P..K, 7-12 the opponent's, 13 before the game
+    ep: int                # en passant square, 64 for none
+    castling: int          # 1 own K, 2 own Q, 4 opponent K, 8 opponent Q
+    halfmove: int
+    repeats: int
+    speed: int             # 0 ultrabullet .. 5 correspondence
+    kind: int              # 0 rated game, 1 arena, 2 swiss, 3 other
+    own_rating: int
+    opp_rating: int
+    own_clock: int         # seconds; GlNoClock when unknown
+    opp_clock: int
+    own_start: int
+    opp_start: int
+    base: int
+    increment: int
+    think: int             # seconds the mover spends on this move; GlNoClock when unknown
+    opp_think: int         # GlNoClock when unknown
+    ply: int
+
+struct GlBlock
+    ada_w: *f32
+    ada_b: *f32
+    qkv_w: *f32
+    qkv_b: *f32
+    out_w: *f32
+    out_b: *f32
+    ff1_w: *f32
+    ff1_b: *f32
+    ff2_w: *f32
+    ff2_b: *f32
+    rel: *f32
+    sg_compress: *f32      # smolgen, when the net has it
+    sg_w0: *f32
+    sg_b0: *f32
+    sg_ln_w: *f32
+    sg_ln_b: *f32
+    sg_w3: *f32
+    sg_b3: *f32
+    sg_norm_w: *f32
+    sg_norm_b: *f32
+
+struct GlNet
+    d: int
+    layers: int
+    heads: int
+    ffn: int
+    dc: int
+    dp: int
+    smolgen: bool
+    bullet_tables: bool    # bullet has rating and clock tables of its own
+    sg_shared: *f32        # smolgen's shared code-to-bias projection, [4096][GlSmolCode]
+    data: *f32
+    inp_t: *f32            # the input layer's weight transposed: one row of d per input feature
+    inp_b: *f32
+    pos: *f32
+    own_rating: *f32
+    opp_rating: *f32
+    own_clock: *f32
+    opp_clock: *f32
+    think: *f32
+    opp_think: *f32
+    ply: *f32
+    think_unknown: *f32
+    increment: *f32
+    berserk: *f32
+    kind: *f32
+    speed: *f32
+    mlp0_w: *f32
+    mlp0_b: *f32
+    mlp2_w: *f32
+    mlp2_b: *f32
+    blocks: [..]GlBlock
+    final_w: *f32
+    final_b: *f32
+    pq_w: *f32
+    pq_b: *f32
+    pk_w: *f32
+    pk_b: *f32
+    under_w: *f32
+    under_b: *f32
+    vtok_w: *f32
+    vtok_b: *f32
+    value0_w: *f32
+    value0_b: *f32
+    value2_w: *f32
+    value2_b: *f32
+    ttok_w: *f32
+    ttok_b: *f32
+    time0_w: *f32
+    time0_b: *f32
+    time2_w: *f32
+    time2_b: *f32
+
+# Buffers for one forward pass, sized for one net.
+struct GlScratch
+    x: *f32
+    y: *f32
+    qkv: *f32
+    att: *f32
+    tmp: *f32
+    hid: *f32
+    q: *f32
+    k: *f32
+    scores: [64]f32
+    c0: *f32
+    c1: *f32
+    c: *f32
+    ada: *f32
+    flat: *f32
+    head: [128]f32
+    sg_comp: [64 * GlSmolCompress]f32
+    sg_h: [GlSmolHidden]f32
+    sg_z: *f32             # heads x GlSmolCode
+    sg_bias: *f32          # heads x 64 x 64 attention biases
+    policy: [GlClasses]f32
+    value: [3]f32
+    time: [GlTimeBins]f32
+
+fn gl_scratch(net: *GlNet) -> *GlScratch
+    let s = new GlScratch
+    let d = net.d
+    s.x = alloc[f32](64 * d)
+    s.y = alloc[f32](64 * d)
+    s.qkv = alloc[f32](64 * 3 * d)
+    s.att = alloc[f32](64 * d)
+    s.tmp = alloc[f32](64 * d)
+    s.hid = alloc[f32](64 * net.ffn)
+    s.q = alloc[f32](64 * net.dp)
+    s.k = alloc[f32](64 * net.dp)
+    s.c0 = alloc[f32](net.dc)
+    s.c1 = alloc[f32](net.dc)
+    s.c = alloc[f32](net.dc)
+    s.ada = alloc[f32](6 * d)
+    s.flat = alloc[f32](64 * 32)
+    if net.smolgen
+        s.sg_z = alloc[f32](net.heads * GlSmolCode)
+        s.sg_bias = alloc[f32](net.heads * 4096)
+    return s
+
+# ---- Building blocks ----------------------------------------------------------------------------
+
+@inline
+fn gl_dot(a: *f32, b: *f32, n: int) -> f32
+    var acc = f32x8.splat(0.0)
+    var i = 0
+    while i < n
+        acc = acc + f32x8.load(a + i) * f32x8.load(b + i)
+        i += 8
+    return acc.sum
+
+# y[r] = w x[r] + b for each of rows rows; w is [n_out][n_in].
+fn gl_linear(w: *f32, b: *f32, x: *f32, y: *f32, rows: int, n_in: int, n_out: int)
+    for r in 0..rows
+        let xr = x + r * n_in
+        let yr = y + r * n_out
+        for o in 0..n_out
+            yr[o] = b[o] + gl_dot(w + o * n_in, xr, n_in)
+
+# Layer norm without its own affine, then the condition's scale and shift.
+fn gl_norm(x: *f32, y: *f32, rows: int, d: int, scale: *f32, shift: *f32)
+    for r in 0..rows
+        let xr = x + r * d
+        let yr = y + r * d
+        var mean: f32 = 0.0
+        for j in 0..d
+            mean += xr[j]
+        mean /= d as f32
+        var variance: f32 = 0.0
+        for j in 0..d
+            let t = xr[j] - mean
+            variance += t * t
+        variance /= d as f32
+        let inv = 1.0 / sqrt(variance + 0.00001)
+        for j in 0..d
+            yr[j] = (xr[j] - mean) * inv * (1.0 + scale[j]) + shift[j]
+
+# Layer norm with its own weight and bias (smolgen's), in place.
+fn gl_layer_norm(x: *f32, n: int, w: *f32, b: *f32)
+    var mean: f32 = 0.0
+    for j in 0..n
+        mean += x[j]
+    mean /= n as f32
+    var variance: f32 = 0.0
+    for j in 0..n
+        let t = x[j] - mean
+        variance += t * t
+    variance /= n as f32
+    let inv = 1.0 / sqrt(variance + 0.00001)
+    for j in 0..n
+        x[j] = (x[j] - mean) * inv * w[j] + b[j]
+
+@inline
+fn gl_silu(x: f32) -> f32
+    return x / (1.0 + exp(-x))
+
+@inline
+fn gl_gelu(x: f32) -> f32
+    return 0.5 * x * (1.0 + gl_erf(x * 0.70710678118654752))
+
+@inline
+fn gl_rel(i: int, j: int) -> int
+    return ((j & 7) - (i & 7) + 7) * 15 + ((j >> 3) - (i >> 3) + 7)
+
+# Adds the piecewise-linear embedding of x on knots 0 .. n-1 of group's table.
+fn gl_knots(table: *f32, n: int, dc: int, x: f32, group: int, out: *f32)
+    let xc = clamp(x, 0.0, (n - 1) as f32 - 0.0001)
+    let i = floor(xc) as int
+    let t = xc - i as f32
+    let a = table + (group * n + i) * dc
+    let b = a + dc
+    for j in 0..dc
+        out[j] += (1.0 - t) * a[j] + t * b[j]
+
+fn gl_add(out: *f32, row: *f32, n: int)
+    for j in 0..n
+        out[j] += row[j]
+
+# ---- Forward ------------------------------------------------------------------------------------
+
+fn gl_condition(net: *GlNet, s: *GlScratch, input: *GlInput)
+    let dc = net.dc
+    zero(s.c0, dc)
+    let speed = clamp(input.speed, 0, 5)
+    let group = net.bullet_tables ? GlSpeedGroupBullet[speed] : GlSpeedGroup[speed]
+    gl_knots(net.own_rating, 23, dc, (input.own_rating - 600) as f32 / 100.0, group, s.c0)
+    gl_knots(net.opp_rating, 23, dc, (input.opp_rating - 600) as f32 / 100.0, group, s.c0)
+    gl_knots(net.own_clock, 12, dc, log2(max(input.own_clock, 1) as f32), group, s.c0)
+    gl_knots(net.opp_clock, 12, dc, log2(max(input.opp_clock, 1) as f32), group, s.c0)
+    if input.think != GlNoClock
+        gl_knots(net.think, 12, dc, log2(1.0 + min(input.think, 4000) as f32), 0, s.c0)
+    else
+        gl_add(s.c0, net.think_unknown, dc)
+    if input.opp_think != GlNoClock
+        gl_knots(net.opp_think, 12, dc, log2(1.0 + min(input.opp_think, 4000) as f32), 0, s.c0)
+    else
+        gl_add(s.c0, net.think_unknown, dc)
+    gl_knots(net.ply, 21, dc, input.ply as f32 / 10.0, 0, s.c0)
+    var bucket = 0
+    for bound in GlIncrementBounds
+        if input.increment >= bound: bucket += 1
+    gl_add(s.c0, net.increment + min(bucket, 9) * dc, dc)
+    let base = input.base as f32
+    let berserk = (input.own_start as f32 < 0.75 * base ? 1 : 0) + (input.opp_start as f32 < 0.75 * base ? 2 : 0)
+    gl_add(s.c0, net.berserk + berserk * dc, dc)
+    gl_add(s.c0, net.kind + min(input.kind, 3) * dc, dc)
+    gl_add(s.c0, net.speed + min(input.speed, 5) * dc, dc)
+    gl_linear(net.mlp0_w, net.mlp0_b, s.c0, s.c1, 1, dc, dc)
+    for j in 0..dc
+        s.c1[j] = gl_silu(s.c1[j])
+    gl_linear(net.mlp2_w, net.mlp2_b, s.c1, s.c, 1, dc, dc)
+
+fn gl_tokens(net: *GlNet, s: *GlScratch, input: *GlInput)
+    let d = net.d
+    var g: [8]f32
+    for bit in 0..4
+        g[bit] = (input.castling >> bit & 1) as f32
+    g[4] = input.halfmove as f32 / 100.0
+    g[5 + min(input.repeats, 2)] = 1.0
+    for sq in 0..64
+        let x = s.x + sq * d
+        for j in 0..d
+            x[j] = net.inp_b[j] + net.pos[sq * d + j]
+        for k in 0..9
+            gl_add(x, net.inp_t + (k * 14 + input.codes[k * 64 + sq] as int) * d, d)
+        if input.ep == sq: gl_add(x, net.inp_t + 126 * d, d)
+        for i in 0..8
+            if g[i] != 0.0
+                let row = net.inp_t + (127 + i) * d
+                for j in 0..d
+                    x[j] += g[i] * row[j]
+
+# Smolgen: attention biases for every head, generated from the whole position (s.y).
+fn gl_smolgen(net: *GlNet, s: *GlScratch, blk: *GlBlock)
+    let d = net.d
+    for sq in 0..64
+        for k in 0..GlSmolCompress
+            s.sg_comp[sq * GlSmolCompress + k] = gl_dot(blk.sg_compress + k * d, s.y + sq * d, d)
+    gl_linear(blk.sg_w0, blk.sg_b0, &s.sg_comp[0], &s.sg_h[0], 1, 64 * GlSmolCompress, GlSmolHidden)
+    for j in 0..GlSmolHidden
+        s.sg_h[j] = gl_silu(s.sg_h[j])
+    gl_layer_norm(&s.sg_h[0], GlSmolHidden, blk.sg_ln_w, blk.sg_ln_b)
+    gl_linear(blk.sg_w3, blk.sg_b3, &s.sg_h[0], s.sg_z, 1, GlSmolHidden, net.heads * GlSmolCode)
+    for h in 0..net.heads
+        let z = s.sg_z + h * GlSmolCode
+        for j in 0..GlSmolCode
+            z[j] = gl_silu(z[j])
+        gl_layer_norm(z, GlSmolCode, blk.sg_norm_w, blk.sg_norm_b)
+        let out = s.sg_bias + h * 4096
+        for o in 0..4096
+            out[o] = gl_dot(net.sg_shared + o * GlSmolCode, z, GlSmolCode)
+
+fn gl_attention(net: *GlNet, s: *GlScratch, blk: *GlBlock)
+    let d = net.d
+    let dh = d / net.heads
+    let scale = 1.0 / sqrt(dh as f32)
+    for h in 0..net.heads
+        for i in 0..64
+            let q = s.qkv + i * 3 * d + h * dh
+            var most: f32 = -1.0e30
+            for j in 0..64
+                var v = gl_dot(q, s.qkv + j * 3 * d + d + h * dh, dh) * scale + blk.rel[h * 225 + gl_rel(i, j)]
+                if net.smolgen: v += s.sg_bias[h * 4096 + i * 64 + j]
+                s.scores[j] = v
+                most = max(most, v)
+            var total: f32 = 0.0
+            for j in 0..64
+                let e = exp(s.scores[j] - most)
+                s.scores[j] = e
+                total += e
+            let out = s.att + i * d + h * dh
+            for t in 0..dh
+                out[t] = 0.0
+            for j in 0..64
+                let p = s.scores[j] / total
+                let v = s.qkv + j * 3 * d + 2 * d + h * dh
+                for t in 0..dh
+                    out[t] += p * v[t]
+
+fn gl_block(net: *GlNet, s: *GlScratch, blk: *GlBlock)
+    let d = net.d
+    gl_linear(blk.ada_w, blk.ada_b, s.c, s.ada, 1, net.dc, 6 * d)
+    gl_norm(s.x, s.y, 64, d, s.ada, s.ada + d)
+    if net.smolgen: gl_smolgen(net, s, blk)
+    gl_linear(blk.qkv_w, blk.qkv_b, s.y, s.qkv, 64, d, 3 * d)
+    gl_attention(net, s, blk)
+    gl_linear(blk.out_w, blk.out_b, s.att, s.tmp, 64, d, d)
+    let g1 = s.ada + 2 * d
+    for i in 0..64
+        for j in 0..d
+            s.x[i * d + j] += g1[j] * s.tmp[i * d + j]
+    gl_norm(s.x, s.y, 64, d, s.ada + 3 * d, s.ada + 4 * d)
+    gl_linear(blk.ff1_w, blk.ff1_b, s.y, s.hid, 64, d, net.ffn)
+    for i in 0..64 * net.ffn
+        s.hid[i] = gl_gelu(s.hid[i])
+    gl_linear(blk.ff2_w, blk.ff2_b, s.hid, s.tmp, 64, net.ffn, d)
+    let g2 = s.ada + 5 * d
+    for i in 0..64
+        for j in 0..d
+            s.x[i * d + j] += g2[j] * s.tmp[i * d + j]
+
+# One position: fills s.policy (every move class), s.value (loss, draw, win logits) and s.time
+# (think-time bin logits). With input.think unknown it is the net as scored; with a think time it
+# is the move distribution given that time (the time head is only meaningful without one).
+fn gl_forward(net: *GlNet, s: *GlScratch, input: *GlInput)
+    let d = net.d
+    let dp = net.dp
+    gl_condition(net, s, input)
+    gl_tokens(net, s, input)
+    for l in 0..net.layers
+        gl_block(net, s, &net.blocks[l])
+    gl_linear(net.final_w, net.final_b, s.c, s.ada, 1, net.dc, 2 * d)
+    gl_norm(s.x, s.y, 64, d, s.ada, s.ada + d)
+    gl_linear(net.pq_w, net.pq_b, s.y, s.q, 64, d, dp)
+    gl_linear(net.pk_w, net.pk_b, s.y, s.k, 64, d, dp)
+    let scale = 1.0 / sqrt(dp as f32)
+    for f in 0..64
+        for t in 0..64
+            s.policy[f * 64 + t] = gl_dot(s.q + f * dp, s.k + t * dp, dp) * scale
+    var under: [3]f32
+    for p in 0..3
+        for file in 0..8
+            for dir in 0..3
+                let to = clamp(56 + file + dir - 1, 0, 63)
+                let from = 48 + file
+                for k in 0..3
+                    under[k] = net.under_b[k] + gl_dot(net.under_w + k * d, s.y + to * d, d)
+                s.policy[4096 + p * 24 + file * 3 + dir] = s.policy[from * 64 + to] + under[p]
+    gl_linear(net.vtok_w, net.vtok_b, s.y, s.flat, 64, d, 32)
+    gl_linear(net.value0_w, net.value0_b, s.flat, &s.head[0], 1, 64 * 32, 128)
+    for j in 0..128
+        s.head[j] = gl_silu(s.head[j])
+    gl_linear(net.value2_w, net.value2_b, &s.head[0], &s.value[0], 1, 128, 3)
+    gl_linear(net.ttok_w, net.ttok_b, s.y, s.flat, 64, d, 32)
+    gl_linear(net.time0_w, net.time0_b, s.flat, &s.head[0], 1, 64 * 32, 128)
+    for j in 0..128
+        s.head[j] = gl_silu(s.head[j])
+    gl_linear(net.time2_w, net.time2_b, &s.head[0], &s.time[0], 1, 128, GlTimeBins)
+
+# The class of a move in the mover's frame: from * 64 + to, or an underpromotion's class.
+fn gl_class(from: int, to: int, promotion: Kind) -> int
+    if promotion == Knight or promotion == Bishop or promotion == Rook
+        let piece = promotion == Knight ? 0 : promotion == Bishop ? 1 : 2
+        return 4096 + piece * 24 + (from & 7) * 3 + ((to & 7) - (from & 7) + 1)
+    return from * 64 + to

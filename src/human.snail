@@ -1,0 +1,244 @@
+# Human play with the Ganglia net (tools/human/README.md, "In the engine"). With UCI_LimitStrength
+# on, the engine builds the net's inputs from the game (the positions so far, both clocks, both
+# ratings) and samples a move from the net's probabilities. UCI_Elo is the Lichess rating to play
+# like.
+#
+# The parts are in files of their own: the game and the net's inputs (humangame.snail), the
+# strength check (humancheck.snail), resignation (humanresign.snail), think times
+# (humantime.snail), premoves (humanpremove.snail), and the debug commands (humandebug.snail).
+
+use ganglia
+use gnet
+use netfile
+use movegen
+use strength
+use humangame
+use humancheck
+use humanresign
+use humantime
+use humanpremove
+use tnet
+
+const HumanDefaultTemperature = 100
+const HumanStyleScale = 0.025     # logits per centipawn of strength.snail's style bonuses
+
+var hn_net: GlNet
+var hn_scratch: *GlScratch
+var hn_ready: bool
+var hn_temperature = HumanDefaultTemperature
+
+fn hn_load(bytes: *u8, length: i64) -> bool
+    let net = new GlNet
+    if not gl_load(net, bytes, length): return false
+    hn_net = *net
+    hn_scratch = gl_scratch(&hn_net)
+    hn_ready = true
+    return true
+
+# The built-in net is Ganglia's v3 small (9 layers x 192 with smolgen, trained on bullet too),
+# with its weights as 8-bit integers (`ganglia quantize --bits 8`): 9.5 MB, small enough to keep
+# in git. The file keeps the name Ganglia gave it, so the source says which net is built in.
+fn hn_load_default()
+    let bytes = embed("v3-small-9x192.gnet")
+    hn_load(bytes.ptr, bytes.len)
+
+init
+    hn_load_default()
+
+# Human Net: a net file to use instead of the embedded one (relative paths are from the engine's
+# folder): the engine's own format, a Ganglia net (.gnet), or either quantized (src/gnet.snail).
+# "<embedded>" goes back to the built-in net, and "<none>" plays Human Mode without a move net:
+# the engine's own search chooses the move, weakened to the rating (src/strength.snail).
+fn hn_load_file(name: str) -> bool
+    if name == "<none>"
+        hn_ready = false
+        return true
+    if name.len == 0 or name == "<embedded>"
+        hn_load_default()
+        return hn_ready
+    let (bytes, size) = nf_read(name)
+    if bytes == null: return false
+    let ok = hn_load(bytes, size)
+    free(bytes)
+    return ok
+
+# One move of human play (hn_choose).
+struct HumanChoice
+    move: Move
+    prob: f64                 # the move's probability at temperature 1, given the think time
+    expected: f64             # the net's expected score for the mover
+    win: f64                  # win, draw and loss chances for the mover
+    draw: f64
+    loss: f64
+    think_ms: i64             # the think time drawn for this move, after HumanPace
+    premove: bool             # the move is a premove, made in no time at all (Human Premove)
+    resign: bool              # the player resigns here (only when HumanResign is on)
+    resign_p: f64             # the resignation model's chance of resigning now
+    checked: bool             # the strength check ran (HumanCheck, at this rating)
+    max_loss: f64             # its limit: expected score a candidate may give away
+    penalty: f64              # and its penalty on what a survivor gives away
+    kept: int                 # candidates that passed, of
+    candidates: int
+    rescue: bool              # the move is the engine's own, not one of the net's top moves
+
+# The player's move: the net is asked once without a think time (for the expected score, the
+# resignation chance and the think-time head), a think time is drawn, and the move is sampled
+# from the net's probabilities given that time (or, with a think-time net that reads the move,
+# from the first pass's, and the think time is drawn for the move), at hn_temperature (percent; 0 plays the most
+# likely move), with the Style bias. With the strength check on at this rating, it is sampled
+# only from the candidates that pass it.
+fn hn_choose(board: *Board, own_elo: int, clocks: HumanClocks, strength: *Strength, search: *Search) -> HumanChoice
+    var choice: HumanChoice
+    var input: GlInput
+    hn_input(board, &input, own_elo, clocks)
+    gl_forward(&hn_net, hn_scratch, &input)
+    let count = legal_moves(board, &hn_moves[0])
+    if count == 0: return choice
+
+    let v = &hn_scratch.value[0]
+    let top = max(max(v[0], v[1]), v[2])
+    let e0 = exp((v[0] - top) as f64)
+    let e1 = exp((v[1] - top) as f64)
+    let e2 = exp((v[2] - top) as f64)
+    choice.loss = e0 / (e0 + e1 + e2)
+    choice.draw = e1 / (e0 + e1 + e2)
+    choice.win = e2 / (e0 + e1 + e2)
+    choice.expected = choice.win + 0.5 * choice.draw
+    choice.resign_p = hn_resign_probability(&input, choice.expected)
+    choice.resign = hn_resign_allowed and hn_uniform(strength) < choice.resign_p
+
+    # The think time comes from the move net's own head, or from the think-time net when one is
+    # loaded (Human Time Net). A think-time net that reads the move is asked once the move is
+    # chosen, and the move then comes from the pass above, without a think time.
+    let flip = board.side == Black
+    let time_last = hn_time_ready and tn_reads_move(&hn_time_net)
+    var time_logits: [TnBins]f32
+    var think = 0.0
+    var at_once = false
+    if not time_last
+        var bins = &hn_scratch.time[0]
+        if hn_time_ready
+            hn_time_logits(&input, &hn_moves[0], count, flip, GlNoClock, &time_logits[0])
+            bins = &time_logits[0]
+        let (seconds, quick) = hn_draw_think(bins, clocks, strength)
+        think = seconds
+        at_once = quick
+        # a move made at once took 0 seconds on the clock the net learned from
+        input.think = quick ? 0 : round(think) as int
+        gl_forward(&hn_net, hn_scratch, &input)
+
+    let style = strength.style
+    var best = 0
+    for i in 0..count
+        let m = hn_moves[i]
+        let promotion = m.is_promotion ? m.promotion : NoKind
+        var logit = hn_scratch.policy[gl_class(hn_frame(m.from as int, flip), hn_frame(m.to as int, flip), promotion)]
+        if style != Balanced: logit += style_bias(board, m, style) as f32 * HumanStyleScale
+        hn_logits[i] = logit
+        if hn_logits[i] > hn_logits[best]: best = i
+
+    var check: HumanCheck
+    check.max_loss = hn_check_loss(own_elo)
+    check.nodes_scale = hn_check_nodes_scale(own_elo)
+    var penalty = hn_check_penalty(own_elo)
+    var tail = hn_check_tail(own_elo)
+    var moves = hn_check_moves(own_elo)
+    let blunder_rate = hn_blunder_rate(own_elo)
+    if blunder_rate > 0.0 and hn_uniform(strength) < blunder_rate
+        penalty = -HumanBlunderPenalty
+        tail = 0.0
+        moves = max(moves, HumanBlunderMoves)
+    # Each survivor's score is its logit minus the penalty on what it gives away, so at
+    # temperature 1 its weight is the net's probability times exp(-penalty * given away), as
+    # fitted, and at temperature 0 the move is the best survivor after the penalty.
+    var adjusted: [HumanCheckSlots]f64
+    var lead = best
+    var lead_slot = -1
+    if hn_check and search != null and count > 1 and (check.max_loss < 1.0 or penalty != 0.0 or tail < 1.0)
+        hn_check_candidates(&check, count, moves)
+        search.human_check(board, &check, count, penalty != 0.0)
+        if check.done
+            let top_expected = hn_expected_of(check.best_score)
+            for c in 0..check.count
+                if not check.kept[c]: continue
+                let given = check.judged[c] ? max(top_expected - hn_expected_of(check.score[c]), 0.0) : 0.0
+                adjusted[c] = hn_logits[check.index[c]] as f64 - penalty * given
+                if lead_slot < 0 or adjusted[c] > adjusted[lead_slot]: lead_slot = c
+            choice.checked = lead_slot >= 0
+            if choice.checked: lead = check.index[lead_slot]
+    var weights: [MaxMoves]f64
+    var total = 0.0
+    let t = max(hn_temperature, 1) as f64 / 100.0 * hn_check_temperature(own_elo)
+    for i in 0..count
+        weights[i] = 0.0
+    if choice.checked
+        choice.max_loss = check.max_loss
+        choice.penalty = penalty
+        choice.candidates = check.count
+        var listed: [MaxMoves]bool
+        for i in 0..count
+            listed[i] = false
+        for c in 0..check.count
+            listed[check.index[c]] = true
+            if check.kept[c]
+                let i = check.index[c]
+                weights[i] = exp((adjusted[c] - adjusted[lead_slot]) / t)
+                total += weights[i]
+                choice.kept += 1
+        if tail > 0.0
+            # the moves the check never looked at, unjudged, at the tail's share
+            for i in 0..count
+                if listed[i]: continue
+                weights[i] = tail * exp((hn_logits[i] as f64 - adjusted[lead_slot]) / t)
+                total += weights[i]
+    else
+        for i in 0..count
+            weights[i] = exp((hn_logits[i] - hn_logits[best]) as f64 / t)
+            total += weights[i]
+    var pick = lead
+    if hn_temperature > 0
+        var u = hn_uniform(strength) * total
+        for i in 0..count
+            u -= weights[i]
+            if u < 0.0
+                pick = i
+                break
+    if choice.checked and check.engine_added: choice.rescue = check.index[check.engine] == pick
+    var plain = 0.0
+    for i in 0..count
+        plain += exp((hn_logits[i] - hn_logits[best]) as f64)
+    choice.prob = exp((hn_logits[pick] - hn_logits[best]) as f64) / plain
+    choice.move = hn_moves[pick]
+    if time_last
+        let m = hn_moves[pick]
+        let played = gl_class(hn_frame(m.from as int, flip), hn_frame(m.to as int, flip), m.is_promotion ? m.promotion : NoKind)
+        hn_time_logits(&input, &hn_moves[0], count, flip, played, &time_logits[0])
+        let (seconds, quick) = hn_draw_think(&time_logits[0], clocks, strength)
+        think = seconds
+        at_once = quick
+    # A move made at once is a premove or a move played on sight, by the kind of move it is.
+    choice.premove = at_once and hn_premoves(board, choice.move, &input, own_elo, strength)
+    if choice.premove: think = 0.0
+    var paced = think * hn_pace as f64 / 100.0
+    if clocks.known: paced = min(paced, clocks.own_ms as f64 / 8000.0)
+    choice.think_ms = (paced * 1000.0) as i64
+    return choice
+
+# How long a person would think about a move the engine chose another way (Human Mode without a
+# move net): seconds from the think-time net, after Human Pace, and whether it is a premove; -1
+# when no think-time net is loaded.
+fn hn_think_for(board: *Board, own_elo: int, clocks: HumanClocks, strength: *Strength, move: Move) -> (f64, bool)
+    if not hn_time_ready: return -1.0, false
+    var input: GlInput
+    hn_input(board, &input, own_elo, clocks)
+    let count = legal_moves(board, &hn_moves[0])
+    let flip = board.side == Black
+    var played = GlNoClock
+    if tn_reads_move(&hn_time_net): played = gl_class(hn_frame(move.from as int, flip), hn_frame(move.to as int, flip), move.is_promotion ? move.promotion : NoKind)
+    var logits: [TnBins]f32
+    hn_time_logits(&input, &hn_moves[0], count, flip, played, &logits[0])
+    let (seconds, at_once) = hn_draw_think(&logits[0], clocks, strength)
+    let premove = at_once and hn_premoves(board, move, &input, own_elo, strength)
+    var think = premove ? 0.0 : seconds * hn_pace as f64 / 100.0
+    if clocks.known: think = min(think, clocks.own_ms as f64 / 8000.0)
+    return think, premove

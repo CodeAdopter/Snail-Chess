@@ -1,0 +1,22 @@
+# Human Mode's strength by rating (src/human.snail, hn_choose), at each knot of CheckElo:
+#   CheckTemperature: a multiple of Human Temperature (above 1 noisier and weaker);
+#   CheckPenalty: each candidate's weight times exp(-penalty * the expected score it gives away);
+#   CheckNodes: the check's search budget, a multiple of Human Check Nodes;
+#   CheckMaxLoss: candidates giving away more are dropped (1.0: none);
+#   CheckNetElo: the rating the net is told (part of the measured configuration);
+#   CheckTail: the share of weight kept by moves outside the check's candidates (1: all moves);
+#   CheckMoves: how many of the net's top moves the check searches;
+#   CheckBlunder: the share of moves played as a beginner's blunder (Human Blunder).
+# Calibrated on the Lichess blitz scale by tools/human/ladder_cal.py (Maia bots pinned at their
+# long-run ratings, neighbour games along one strength path). Generated; do not edit.
+
+const CheckKnots = 25
+const CheckElo: [25]int = [400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 2800]
+const CheckTemperature: [25]f64 = [1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 0.994, 0.988, 0.970, 0.940, 0.898, 0.849, 0.780, 0.688, 0.603, 0.520, 0.350, 0.163, 0.100, 0.100, 0.100, 0.100, 0.100]
+const CheckPenalty: [25]f64 = [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.12, 0.27, 0.67, 1.33, 2.27, 3.35, 4.89, 6.93, 8.82, 10.67, 14.45, 18.60, 32.83, 100.00, 100.00, 100.00, 211.99]
+const CheckNodes: [25]f64 = [1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.33, 3.42, 10.17, 27.19]
+const CheckMaxLoss: [25]f64 = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+const CheckNetElo: [25]f64 = [600.0, 600.0, 600.0, 600.0, 600.0, 651.3, 725.4, 842.9, 900.0, 900.0, 1046.4, 1195.5, 1280.7, 1375.5, 1511.8, 1691.0, 1807.4, 1894.1, 2070.8, 2265.5, 2481.3, 2800.0, 2800.0, 2800.0, 2800.0]
+const CheckTail: [25]f64 = [1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 1.000, 0.547, 0.021, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000]
+const CheckMoves: [25]f64 = [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0]
+const CheckBlunder: [25]f64 = [0.752, 0.505, 0.277, 0.111, 0.025, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000]

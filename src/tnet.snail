@@ -1,0 +1,128 @@
+# The think-time net: a small net that gives the chances of each of 32 think-time bins for a
+# position, from the numbers of src/timefeat.snail. Ganglia trains it (its src/timenet.snail) and
+# writes the file this reads, a .tnet:
+#
+#   0     "GTIMENET"
+#   8     eight int32: version (2), the input groups the net reads (timefeat.snail), the width of
+#         the layer for the 0-or-1 inputs, of the first and of the second hidden layer, and the
+#         numbers of dense inputs, 0-or-1 inputs and bins it was made for
+#   40    int64 parameter count
+#   56    a byte that is the width of a transformer over the squares, over 8: 0 here, since the
+#         engine runs the nets without one
+#   64    float32 tensors, a Linear's weight as [out][in]: embed.weight [embed][hot], embed.bias,
+#         hidden1.weight [hidden1][dense + embed], hidden1.bias, hidden2.weight [hidden2][hidden1],
+#         hidden2.bias, out.weight [32][hidden2], out.bias
+#
+# or that file quantized (src/netfile.snail). The 0-or-1 inputs go through their layer and SiLU,
+# join the dense inputs, and two hidden layers with SiLU lead to the 32 logits.
+
+use netfile
+use timefeat
+
+const TnBins = 32
+
+struct TnNet
+    groups: int
+    embed: int
+    hidden1: int
+    hidden2: int
+    data: *f32
+    embed_t: *f32          # the 0-or-1 inputs' weight transposed: one row of embed per input
+    embed_b: *f32
+    w1: *f32
+    b1: *f32
+    w2: *f32
+    b2: *f32
+    w3: *f32
+    b3: *f32
+    x: *f32                # one pass's values: the first hidden layer's inputs, and both layers
+    a1: *f32
+    a2: *f32
+
+fn tn_take(data: *f32, ref at: i64, n: i64) -> *f32
+    let p = data + at
+    at += n
+    return p
+
+# Reads a net from a file's bytes, a .tnet or one quantized; false if they are not a whole
+# think-time net that the engine runs.
+fn tn_load(net: *TnNet, bytes: *u8, length: i64) -> bool
+    if not nf_is_quantized(bytes, length): return tn_read(net, bytes, length)
+    let (plain, size) = nf_unquantized(bytes, length)
+    if plain == null: return false
+    let ok = tn_read(net, plain, size)
+    free(plain)
+    return ok
+
+fn tn_read(net: *TnNet, bytes: *u8, length: i64) -> bool
+    if length < 64 or bytes[0..8] as str != "GTIMENET": return false
+    if nf_i32(bytes + 8) != 2 or nf_i32(bytes + 28) != TfDenseFeatures or nf_i32(bytes + 32) != TfHotFeatures or nf_i32(bytes + 36) != TnBins: return false
+    net.groups = nf_i32(bytes + 12)
+    net.embed = nf_i32(bytes + 16)
+    net.hidden1 = nf_i32(bytes + 20)
+    net.hidden2 = nf_i32(bytes + 24)
+    # No transformer over the squares, and no inputs from the full net's policy.
+    if bytes[56] != 0 or net.groups & TfGroupPolicy != 0: return false
+    if net.embed < 0 or net.embed > 4096 or net.hidden1 < 1 or net.hidden1 > 65536 or net.hidden2 < 1 or net.hidden2 > 65536: return false
+    let embed = net.embed as i64
+    let h1 = net.hidden1 as i64
+    let h2 = net.hidden2 as i64
+    let joined = TfDenseFeatures + embed
+    let floats = nf_i64(bytes + 40)
+    if floats != embed * TfHotFeatures + embed + h1 * joined + h1 + h2 * h1 + h2 + TnBins * h2 + TnBins: return false
+    if length != 64 + floats * 4: return false
+    net.data = alloc[f32](floats)
+    copy(net.data as *u8, bytes + 64, floats * 4)
+    var at: i64 = 0
+    let embed_w = tn_take(net.data, ref at, embed * TfHotFeatures)
+    net.embed_b = tn_take(net.data, ref at, embed)
+    net.w1 = tn_take(net.data, ref at, h1 * joined)
+    net.b1 = tn_take(net.data, ref at, h1)
+    net.w2 = tn_take(net.data, ref at, h2 * h1)
+    net.b2 = tn_take(net.data, ref at, h2)
+    net.w3 = tn_take(net.data, ref at, TnBins * h2)
+    net.b3 = tn_take(net.data, ref at, TnBins)
+    net.embed_t = alloc[f32](max(embed * TfHotFeatures, 1))
+    for j in 0..embed
+        for k in 0..TfHotFeatures
+            net.embed_t[k * embed + j] = embed_w[j * TfHotFeatures + k]
+    net.x = alloc[f32](joined)
+    net.a1 = alloc[f32](h1)
+    net.a2 = alloc[f32](h2)
+    return true
+
+# Whether the net reads the move about to be played: such a net is asked once the move is chosen.
+fn tn_reads_move(net: *TnNet) -> bool
+    return net.groups & (TfGroupMove | TfGroupTarget) != 0
+
+@inline
+fn tn_silu(x: f32) -> f32
+    return x / (1.0 + exp(-x))
+
+# y = SiLU(w x + b), or w x + b alone for the last layer; w is [n_out][n_in].
+fn tn_layer(w: *f32, b: *f32, x: *f32, y: *f32, n_in: int, n_out: int, last: bool)
+    for o in 0..n_out
+        let row = w + o as i64 * n_in
+        var s = b[o]
+        for i in 0..n_in
+            s += row[i] * x[i]
+        y[o] = last ? s : tn_silu(s)
+
+# The 32 think-time logits for a position given as a training record.
+fn tn_logits(net: *TnNet, record: *u8, out: *f32)
+    var hot: [TfHotFeatures]f32
+    tf_features(record, net.groups, net.x, &hot[0])
+    let embed = net.embed
+    let e = net.x + TfDenseFeatures
+    for j in 0..embed
+        e[j] = net.embed_b[j]
+    for k in 0..TfHotFeatures
+        if hot[k] != 0.0
+            let row = net.embed_t + k as i64 * embed
+            for j in 0..embed
+                e[j] += row[j]
+    for j in 0..embed
+        e[j] = tn_silu(e[j])
+    tn_layer(net.w1, net.b1, net.x, net.a1, TfDenseFeatures + embed, net.hidden1, false)
+    tn_layer(net.w2, net.b2, net.a1, net.a2, net.hidden1, net.hidden2, false)
+    tn_layer(net.w3, net.b3, net.a2, out, net.hidden2, TnBins, true)

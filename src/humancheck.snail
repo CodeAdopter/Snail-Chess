@@ -1,0 +1,202 @@
+# Human Mode's strength check (the limits by rating are the tables of src/check.snail). Snail
+# searches the net's top moves and its own best move to the same depth; a candidate that gives
+# away more than the rating's limit is dropped, and hn_choose (src/human.snail) samples the move
+# from the survivors, each weighted down by what it gives away.
+
+use movegen
+use strength
+use check
+
+# The legal moves of the position being played, and the net's logit for each.
+var hn_moves: [MaxMoves]Move
+var hn_logits: [MaxMoves]f32
+
+# The strength check (limits in src/check.snail). Snail searches the net's top HumanCheckMoves
+# moves and its own best move to the same depth. A candidate that gives away more than the
+# rating's limit against the engine's best move (in expected score, on Lichess's centipawn curve)
+# is dropped, and the move is sampled from the survivors. The engine's move always survives, so a
+# strong player still finds the only move when every natural one loses.
+const HumanCheckMoves = 5               # the net's top moves the check searches (CheckMoves per rating)
+const HumanCheckSlots = 16              # the most candidates: CheckMoves up to 15, plus the engine's move
+const HumanDefaultCheckNodes = 100000
+const HumanCheckMaxDepth = 16           # candidates are searched to the engine's depth, at most this
+const HumanCheckChildBudget = 2         # each candidate's node budget, in multiples of the check's
+const HumanCheckCurve = 0.00368208     # Lichess: expected score = 1 / (1 + exp(-k * centipawns))
+const HumanBlunderPenalty = 24.0       # a blunder move's penalty, negated: prefers what gives something away
+const HumanBlunderMoves = 8            # a blunder is one of the net's top 8, a move a beginner would consider
+
+var hn_check = true
+var hn_check_penalty_override = 0.0    # Human Check Penalty / Human Penalty Centi, when hn_check_penalty_set
+var hn_check_penalty_set = false       # (a negative penalty prefers what gives something away: the weakest ratings)
+# Calibration overrides (tools/human/ladder_cal.py plays any configuration): -1 / 0 use the table.
+var hn_tail_override = -1            # Human Tail, percent
+var hn_check_temperature_override = -1   # Human Check Temperature, percent
+var hn_net_elo_override = 0          # Human Net Elo
+var hn_check_moves_override = 0      # Human Check Moves
+var hn_blunder_override = -1         # Human Blunder, percent
+var hn_check_nodes: i64 = HumanDefaultCheckNodes
+
+struct HumanCheck
+    max_loss: f64
+    nodes_scale: f64                    # times Human Check Nodes, from the rating (CheckNodes)
+    count: int                          # candidates
+    index: [HumanCheckSlots]int         # each one's place in hn_moves
+    score: [HumanCheckSlots]int         # for the mover; exact only in an exact check
+    kept: [HumanCheckSlots]bool
+    judged: [HumanCheckSlots]bool       # its search finished within its budget
+    engine: int                         # the candidate that is the engine's best move
+    engine_added: bool                  # it was not one of the net's top moves
+    best: Move
+    best_score: int
+    depth: int
+    done: bool                          # the searches finished (not stopped)
+
+# The check's limit at this rating, between the knots of src/check.snail.
+fn hn_check_loss(elo: int) -> f64
+    return hn_check_knots(&CheckMaxLoss[0], elo)
+
+# The rating's temperature, a multiple of Human Temperature: above 1 plays noisier (weaker), below
+# 1 sticks closer to the best moves (stronger).
+fn hn_check_temperature(elo: int) -> f64
+    if hn_check_temperature_override >= 0: return hn_check_temperature_override as f64 / 100.0
+    return hn_check_knots(&CheckTemperature[0], elo)
+
+# The tail: with the check on, moves outside its candidates (the net's top 5 and the engine's
+# move) keep this share of their weight. 1 samples every legal move as without the check, 0 only
+# the candidates; between them the bottom ratings rise smoothly into the check.
+fn hn_check_tail(elo: int) -> f64
+    if hn_tail_override >= 0: return hn_tail_override as f64 / 100.0
+    return clamp(hn_check_knots(&CheckTail[0], elo), 0.0, 1.0)
+
+# Its penalty: each survivor's weight is multiplied by exp(-penalty * what it gives away).
+fn hn_check_penalty(elo: int) -> f64
+    if hn_check_penalty_set: return hn_check_penalty_override
+    return hn_check_knots(&CheckPenalty[0], elo)
+
+# Its search budget, a multiple of Human Check Nodes: the strongest settings search deeper.
+fn hn_check_nodes_scale(elo: int) -> f64
+    return hn_check_knots(&CheckNodes[0], elo)
+
+# The rating the net is told at this setting. The table pairs it with the temperature and penalty
+# as one measured configuration, so it can differ from UCI_Elo: what a setting plays like was
+# measured with the net told this.
+fn hn_net_elo(elo: int) -> int
+    if hn_net_elo_override > 0: return hn_net_elo_override
+    return (hn_check_knots(&CheckNetElo[0], elo) + 0.5) as int
+
+# How many of the net's top moves the check searches: 5, more at the weakest ratings, where a
+# negative penalty looks for the moves that give something away.
+fn hn_check_moves(elo: int) -> int
+    if hn_check_moves_override > 0: return hn_check_moves_override
+    return (hn_check_knots(&CheckMoves[0], elo) + 0.5) as int
+
+# The share of moves played as a beginner's blunder at this rating. On such a move the check
+# searches the net's top HumanBlunderMoves and prefers the ones that give something away (a hung
+# piece); every other move is played as the rest of the table says. A share keeps the weakest
+# settings winning won games, so their games end: a setting that gives something away on every
+# move can't mate, and two of them drew 90% of their games.
+fn hn_blunder_rate(elo: int) -> f64
+    if hn_blunder_override >= 0: return hn_blunder_override as f64 / 100.0
+    return clamp(hn_check_knots(&CheckBlunder[0], elo), 0.0, 1.0)
+
+fn hn_check_knots(values: *f64, elo: int) -> f64
+    if elo <= CheckElo[0]: return values[0]
+    for i in 1..CheckKnots
+        if elo <= CheckElo[i]
+            let part = (elo - CheckElo[i - 1]) as f64 / (CheckElo[i] - CheckElo[i - 1]) as f64
+            return values[i - 1] + (values[i] - values[i - 1]) * part
+    return values[CheckKnots - 1]
+
+fn hn_expected_of(score: int) -> f64
+    if score >= MateBound: return 1.0
+    if score <= -MateBound: return 0.0
+    return 1.0 / (1.0 + exp(-HumanCheckCurve * score as f64))
+
+# The lowest score worth an expected score of e (-Infinity when every score is).
+fn hn_score_for(e: f64) -> int
+    if e <= 0.0001: return -Infinity
+    if e >= 0.9999: return MateBound - 1
+    return clamp(round(log(e / (1.0 - e)) / HumanCheckCurve) as int, -MateBound + 1, MateBound - 1)
+
+fn hn_check_has(check: *HumanCheck, i: int) -> bool
+    for c in 0..check.count
+        if check.index[c] == i: return true
+    return false
+
+# The net's top HumanCheckMoves moves by hn_logits, most likely first.
+fn hn_check_candidates(check: *HumanCheck, count: int, moves: int)
+    check.count = 0
+    check.engine = -1
+    check.engine_added = false
+    for n in 0..min(clamp(moves, 1, HumanCheckSlots - 1), count)
+        var pick = -1
+        for i in 0..count
+            if hn_check_has(check, i): continue
+            if pick < 0 or hn_logits[i] > hn_logits[pick]: pick = i
+        check.index[check.count] = pick
+        check.count += 1
+
+extend Search
+    # The engine's best move (a search of hn_check_nodes x check.nodes_scale nodes), added to the candidates if the
+    # net missed it, then every other candidate searched to the same depth. exact: full-window
+    # scores (hncheck, for the fit); otherwise a null-window test against the limit, which
+    # decides the same thing faster.
+    fn human_check(board: *Board, check: *HumanCheck, count: int, exact: bool)
+        check.done = false
+        let owner = group
+        let quiet = suppress_output
+        group = null
+        suppress_output = true
+        if table != null: table.new_search()
+        let nodes = max((hn_check_nodes as f64 * check.nodes_scale) as i64, 1000)
+        let best = find_best_move(board, SearchLimits(max_nodes: nodes))
+        group = owner
+        suppress_output = quiet
+        if best == NoMove or stop_requested: return
+        check.best = best
+        check.best_score = last_score
+        # In endgames the table lets the engine's search run very deep in few nodes; a candidate
+        # searched to that depth without it can take minutes.
+        check.depth = clamp(last_depth, 1, HumanCheckMaxDepth)
+        for c in 0..check.count
+            if hn_moves[check.index[c]] == best: check.engine = c
+        if check.engine < 0
+            for i in 0..count
+                if hn_moves[i] == best and check.count < HumanCheckSlots
+                    check.index[check.count] = i
+                    check.engine = check.count
+                    check.engine_added = true
+                    check.count += 1
+        if check.engine < 0: return
+
+        let bound = hn_score_for(hn_expected_of(check.best_score) - check.max_loss)
+        time_limit_ms = i64.max
+        until_stopped = false
+        let hash = table != null ? board.key : 0
+        for c in 0..check.count
+            check.score[c] = check.best_score
+            check.kept[c] = true
+            check.judged[c] = c == check.engine
+            if c == check.engine or (bound <= -MateBound and not exact): continue
+            let m = hn_moves[check.index[c]]
+            # Searched a depth at a time within its own budget; the deepest depth that finished
+            # counts. (An unjudged candidate would count as giving nothing away, which a strong
+            # penalty would then prefer, in exactly the positions too sharp to search.)
+            node_limit = node_count + HumanCheckChildBudget * nodes
+            for depth in 1..check.depth + 1
+                var s = 0
+                if exact
+                    s = child_value[board.side](board, m, depth, -Infinity, Infinity, hash)
+                else
+                    s = child_value[board.side](board, m, depth, bound - 1, bound, hash)
+                if stop_requested
+                    if node_count < node_limit
+                        node_limit = 0
+                        return                  # stopped from outside
+                    stop_requested = false
+                    break
+                check.score[c] = s
+                check.kept[c] = s >= bound
+                check.judged[c] = true
+        node_limit = 0
+        check.done = true

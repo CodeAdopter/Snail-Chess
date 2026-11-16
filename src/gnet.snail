@@ -1,0 +1,137 @@
+# Reads the human-move net (src/ganglia.snail) from a file's bytes. Three formats hold the same
+# float32 tensors in the same order, each a Linear's weight as [out][in]:
+#
+#   "GANGLIA1"   the engine's own, from tools/human/export.py: eight int32 (d, layers, heads, ffn,
+#                dc, dp, tensor count, flags: 1 = smolgen), then the tensors
+#   "GANGLIA2"   a Ganglia net (.gnet, Ganglia's src/checkpoint.snail): eight int32 (d, layers,
+#                heads, ffn, dc, dp, smolgen, flags: 1 = bullet has tables of its own), the
+#                parameter count as int64 at byte 48, and from byte 128 the tensors, then the
+#                salience head, which only training uses, and after them the trainer's state when
+#                the file is a checkpoint
+#   "GQUANT01"   either of them quantized (src/netfile.snail)
+
+use ganglia
+use netfile
+
+fn gl_take(data: *f32, ref at: i64, n: i64) -> *f32
+    let p = data + at
+    at += n
+    return p
+
+# Reads a net from a file's bytes, in any of the three formats; false if they are not a whole net
+# of a size the engine runs.
+fn gl_load(net: *GlNet, bytes: *u8, length: i64) -> bool
+    if not nf_is_quantized(bytes, length): return gl_read(net, bytes, length)
+    let (plain, size) = nf_unquantized(bytes, length)
+    if plain == null: return false
+    let ok = gl_read(net, plain, size)
+    free(plain)
+    return ok
+
+# Reads a net's own file (an engine net or a Ganglia net).
+fn gl_read(net: *GlNet, bytes: *u8, length: i64) -> bool
+    if length < 40: return false
+    var header: i64 = 40
+    var floats: i64 = 0
+    var after: i64 = 0          # floats after the tensors the engine reads
+    net.d = nf_i32(bytes + 8)
+    net.layers = nf_i32(bytes + 12)
+    net.heads = nf_i32(bytes + 16)
+    net.ffn = nf_i32(bytes + 20)
+    net.dc = nf_i32(bytes + 24)
+    net.dp = nf_i32(bytes + 28)
+    if bytes[0..8] as str == "GANGLIA1"
+        net.smolgen = nf_i32(bytes + 36) & 1 != 0
+        net.bullet_tables = false
+        floats = (length - 40) / 4
+    elif length >= 128 and bytes[0..8] as str == "GANGLIA2"
+        header = 128
+        net.smolgen = nf_i32(bytes + 32) != 0
+        net.bullet_tables = nf_i32(bytes + 36) & 1 != 0
+        floats = nf_i64(bytes + 48)
+        if floats < 0 or floats > (length - 128) / 4: return false
+        after = net.d as i64 + 1
+    else
+        return false
+    # The forward pass adds eight floats at a time, so every Linear's inputs and each head's
+    # share of the width come in eights.
+    if net.d < 8 or net.d > 4096 or net.layers < 1 or net.layers > 64 or net.heads < 1 or net.d % net.heads != 0: return false
+    if net.d % 8 != 0 or (net.d / net.heads) % 8 != 0 or net.ffn < 8 or net.ffn % 8 != 0: return false
+    if net.dc < 8 or net.dc % 8 != 0 or net.dp < 8 or net.dp % 8 != 0: return false
+    let d = net.d as i64
+    let dc = net.dc as i64
+    let dp = net.dp as i64
+    let ffn = net.ffn as i64
+    net.data = alloc[f32](floats)
+    copy(net.data as *u8, bytes + header, floats * 4)
+    let data = net.data
+    var at: i64 = 0
+    let inp_w = gl_take(data, ref at, d * GlInputs)
+    net.inp_b = gl_take(data, ref at, d)
+    net.pos = gl_take(data, ref at, 64 * d)
+    net.own_rating = gl_take(data, ref at, 4 * 23 * dc)
+    net.opp_rating = gl_take(data, ref at, 4 * 23 * dc)
+    net.own_clock = gl_take(data, ref at, 4 * 12 * dc)
+    net.opp_clock = gl_take(data, ref at, 4 * 12 * dc)
+    net.think = gl_take(data, ref at, 12 * dc)
+    net.opp_think = gl_take(data, ref at, 12 * dc)
+    net.ply = gl_take(data, ref at, 21 * dc)
+    net.think_unknown = gl_take(data, ref at, dc)
+    net.increment = gl_take(data, ref at, 10 * dc)
+    net.berserk = gl_take(data, ref at, 4 * dc)
+    net.kind = gl_take(data, ref at, 4 * dc)
+    net.speed = gl_take(data, ref at, 6 * dc)
+    net.mlp0_w = gl_take(data, ref at, dc * dc)
+    net.mlp0_b = gl_take(data, ref at, dc)
+    net.mlp2_w = gl_take(data, ref at, dc * dc)
+    net.mlp2_b = gl_take(data, ref at, dc)
+    for l in 0..net.layers
+        let blk = net.blocks.add()
+        blk.ada_w = gl_take(data, ref at, 6 * d * dc)
+        blk.ada_b = gl_take(data, ref at, 6 * d)
+        blk.qkv_w = gl_take(data, ref at, 3 * d * d)
+        blk.qkv_b = gl_take(data, ref at, 3 * d)
+        blk.out_w = gl_take(data, ref at, d * d)
+        blk.out_b = gl_take(data, ref at, d)
+        blk.ff1_w = gl_take(data, ref at, ffn * d)
+        blk.ff1_b = gl_take(data, ref at, ffn)
+        blk.ff2_w = gl_take(data, ref at, d * ffn)
+        blk.ff2_b = gl_take(data, ref at, d)
+        blk.rel = gl_take(data, ref at, net.heads as i64 * 225)
+        if net.smolgen
+            blk.sg_compress = gl_take(data, ref at, GlSmolCompress * d)
+            blk.sg_w0 = gl_take(data, ref at, GlSmolHidden * 64 * GlSmolCompress)
+            blk.sg_b0 = gl_take(data, ref at, GlSmolHidden)
+            blk.sg_ln_w = gl_take(data, ref at, GlSmolHidden)
+            blk.sg_ln_b = gl_take(data, ref at, GlSmolHidden)
+            blk.sg_w3 = gl_take(data, ref at, net.heads as i64 * GlSmolCode * GlSmolHidden)
+            blk.sg_b3 = gl_take(data, ref at, net.heads as i64 * GlSmolCode)
+            blk.sg_norm_w = gl_take(data, ref at, GlSmolCode)
+            blk.sg_norm_b = gl_take(data, ref at, GlSmolCode)
+    if net.smolgen: net.sg_shared = gl_take(data, ref at, 4096 * GlSmolCode)
+    net.final_w = gl_take(data, ref at, 2 * d * dc)
+    net.final_b = gl_take(data, ref at, 2 * d)
+    net.pq_w = gl_take(data, ref at, dp * d)
+    net.pq_b = gl_take(data, ref at, dp)
+    net.pk_w = gl_take(data, ref at, dp * d)
+    net.pk_b = gl_take(data, ref at, dp)
+    net.under_w = gl_take(data, ref at, 3 * d)
+    net.under_b = gl_take(data, ref at, 3)
+    net.vtok_w = gl_take(data, ref at, 32 * d)
+    net.vtok_b = gl_take(data, ref at, 32)
+    net.value0_w = gl_take(data, ref at, 128 * 64 * 32)
+    net.value0_b = gl_take(data, ref at, 128)
+    net.value2_w = gl_take(data, ref at, 3 * 128)
+    net.value2_b = gl_take(data, ref at, 3)
+    net.ttok_w = gl_take(data, ref at, 32 * d)
+    net.ttok_b = gl_take(data, ref at, 32)
+    net.time0_w = gl_take(data, ref at, 128 * 64 * 32)
+    net.time0_b = gl_take(data, ref at, 128)
+    net.time2_w = gl_take(data, ref at, GlTimeBins * 128)
+    net.time2_b = gl_take(data, ref at, GlTimeBins)
+    if at + after != floats: return false
+    net.inp_t = alloc[f32](GlInputs * d)
+    for j in 0..d
+        for i in 0..GlInputs
+            net.inp_t[i * d + j] = inp_w[j * GlInputs + i]
+    return true

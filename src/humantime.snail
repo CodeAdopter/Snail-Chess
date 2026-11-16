@@ -1,0 +1,138 @@
+# How long the player thinks (src/human.snail): a time drawn from 32 think-time bins, whose chances
+# come from the move net's own think-time head or, with Human Time Net set, from a think-time net
+# (src/tnet.snail), which is given the position as a training record.
+
+use ganglia
+use netfile
+use timefeat
+use tnet
+use movegen
+use strength
+use humangame
+
+const HumanDefaultPace = 100
+
+var hn_timing = false
+var hn_pace = HumanDefaultPace
+
+# A number in [0, 1) from the strength's generator.
+fn hn_uniform(strength: *Strength) -> f64
+    return (strength.next() >> 11) as f64 * (1.0 / 9007199254740992.0)
+
+# A think time drawn from the logits of the 32 think-time bins: a bin, then a time inside it. Bin 0 is a move made at once
+# (under a second on Lichess's clock); bin b covers 2^((b-1)/4) .. 2^(b/4) seconds.
+fn hn_think_seconds(logits: *f32, strength: *Strength) -> f64
+    var top = logits[0]
+    for b in 1..GlTimeBins
+        top = max(top, logits[b])
+    var weights: [GlTimeBins]f64
+    var total = 0.0
+    for b in 0..GlTimeBins
+        weights[b] = exp((logits[b] - top) as f64)
+        total += weights[b]
+    var u = hn_uniform(strength) * total
+    var bin = GlTimeBins - 1
+    for b in 0..GlTimeBins
+        u -= weights[b]
+        if u < 0.0
+            bin = b
+            break
+    let r = hn_uniform(strength)
+    if bin == 0: return 0.3 + 0.6 * r
+    let low = (bin - 1) as f64 / 4.0
+    let high = bin == GlTimeBins - 1 ? low + 0.5 : bin as f64 / 4.0
+    return pow(2.0, low + (high - low) * r)
+
+# A move's think time in seconds, drawn from the bins' logits and kept within two minutes and an
+# eighth of the mover's clock, and whether the move is made at once: a draw under a second is bin
+# 0, a move that took 0 seconds on Lichess's whole-second clock, the ones people premove or play
+# on sight. Which of the two it is depends on the move (src/humanpremove.snail); the time drawn
+# here is the one for a move played on sight.
+fn hn_draw_think(logits: *f32, clocks: HumanClocks, strength: *Strength) -> (f64, bool)
+    var think = min(hn_think_seconds(logits, strength), 120.0)
+    let at_once = think < 1.0
+    if clocks.known: think = min(think, clocks.own_ms as f64 / 8000.0)
+    return think, at_once
+
+var hn_time_net: TnNet
+var hn_time_ready = false
+
+# Human Time Net: a think-time net's file (a .tnet, or one quantized; relative paths are from the
+# engine's folder) to draw think times from. "<none>" goes back to the move net's own head.
+fn hn_load_time_file(name: str) -> bool
+    if name.len == 0 or name == "<none>" or name == "<empty>"
+        hn_time_ready = false
+        return true
+    let (bytes, size) = nf_read(name)
+    if bytes == null: return false
+    let net = new TnNet
+    let ok = tn_load(net, bytes, size)
+    free(bytes)
+    if ok
+        hn_time_net = *net
+        hn_time_ready = true
+    return ok
+
+fn hn_put16(p: *u8, value: int)
+    let v = clamp(value, 0, 0xFFFF)
+    p[0] = (v & 0xFF) as u8
+    p[1] = (v >> 8) as u8
+
+# The position as a training record (TfRecord bytes; tools/human/README.md, "Training positions"),
+# with the fields the think-time net reads: the nine boards, the legal moves by the square they
+# leave, the game's state, ratings and clocks from the net's input, and the think times the game
+# has shown (hn_game, as hn_input left them). moves are the legal moves, and target the class of
+# the move about to be played, GlNoClock when it is not chosen yet.
+fn hn_time_record(input: *GlInput, moves: *Move, count: int, flip: bool, target: int, record: *u8)
+    zero(record, TfRecord)
+    for k in 0..9
+        for sq in 0..64
+            record[32 * k + (sq >> 1)] |= ((input.codes[k * 64 + sq] as int & 15) << ((sq & 1) * 4)) as u8
+    var slot_of: [64]int
+    for i in 0..64
+        slot_of[i] = -1
+    var targets: [16]u64
+    var slots = 0
+    for i in 0..16
+        record[TfAtFromSquares + i] = 255
+    for i in 0..count
+        let from = hn_frame(moves[i].from as int, flip)
+        let to = hn_frame(moves[i].to as int, flip)
+        if slot_of[from] < 0
+            if slots == 16: continue
+            slot_of[from] = slots
+            record[TfAtFromSquares + slots] = from as u8
+            slots += 1
+        targets[slot_of[from]] |= 1 as u64 << to as u64
+    for i in 0..16
+        for b in 0..8
+            record[TfAtMoves + 8 * i + b] = (targets[i] >> (8 * b) as u64 & 0xFF) as u8
+    hn_put16(record + TfAtTarget, target)
+    record[TfAtEp] = clamp(input.ep, 0, 64) as u8
+    record[TfAtCastling] = (input.castling & 15) as u8
+    record[TfAtHalfmove] = clamp(input.halfmove, 0, 255) as u8
+    record[TfAtRepeats] = clamp(input.repeats, 0, 255) as u8
+    record[TfAtSpeed] = clamp(input.speed, 0, 5) as u8
+    record[TfAtKind] = clamp(input.kind, 0, 3) as u8
+    record[TfAtResult] = 3
+    hn_put16(record + TfAtLegalMoves, count)
+    hn_put16(record + TfAtOwnRating, input.own_rating)
+    hn_put16(record + TfAtOppRating, input.opp_rating)
+    hn_put16(record + TfAtOwnClock, min(input.own_clock, 0xFFFE))
+    hn_put16(record + TfAtOppClock, min(input.opp_clock, 0xFFFE))
+    hn_put16(record + TfAtOwnStart, min(input.own_start, 0xFFFE))
+    hn_put16(record + TfAtOppStart, min(input.opp_start, 0xFFFE))
+    hn_put16(record + TfAtBase, min(input.base, 0xFFFE))
+    hn_put16(record + TfAtIncrement, min(input.increment, 0xFFFE))
+    hn_put16(record + TfAtThink, TfNoClock)
+    hn_put16(record + TfAtOppThink, input.opp_think)
+    hn_put16(record + TfAtPly, min(input.ply, 0xFFFE))
+    hn_put16(record + TfAtOwnThink1, hn_game.own_think1)
+    hn_put16(record + TfAtOwnThink2, hn_game.own_think2)
+
+# The think-time net's 32 logits for the position, with the move about to be played (its class,
+# GlNoClock for none).
+fn hn_time_logits(input: *GlInput, moves: *Move, count: int, flip: bool, target: int, logits: *f32)
+    var record: [TfRecord]u8
+    hn_time_record(input, moves, count, flip, target, &record[0])
+    tn_logits(&hn_time_net, &record[0], logits)

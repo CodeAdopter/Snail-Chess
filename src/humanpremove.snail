@@ -1,0 +1,55 @@
+# Which of the moves made at once are premoves (src/human.snail). A think time drawn from the
+# first bin is a move that took 0 seconds on Lichess's whole-second clock. About half of those are
+# premoves, which took no time at all; the rest were played on sight in a few tenths of a second.
+# The model of src/premove.snail (tools/human/premove_fit.py, fitted on games whose clocks are in
+# hundredths of a second) gives the chance that such a move is a premove, on the features it was
+# fitted with: a recapture usually is, a quiet move with time on the clock usually is not.
+
+use ganglia
+use premove
+use humangame
+use humantime
+use strength
+
+# Human Premove: a premove is played in no time at all.
+var hn_premove = true
+
+# The square the opponent's last move captured on, -1 when it took nothing: where a piece of the
+# mover's stood a ply ago and one of the opponent's stands now.
+fn hn_taken_square(board: *Board) -> int
+    let now = hn_game.keys.len as int - 1
+    if now < 1: return -1
+    let us = board.side as int
+    for sq in 0..64
+        let before = hn_game.squares[(now - 1) * 64 + sq] as Piece
+        let after = hn_game.squares[now * 64 + sq] as Piece
+        if before != NoPiece and before.side as int == us and after != NoPiece and after.side as int != us: return sq
+    return -1
+
+# The chance that this move, made at once, is a premove. input is the position's (hn_input).
+fn hn_premove_chance(board: *Board, move: Move, input: *GlInput, own_elo: int) -> f64
+    let recapture = move.is_capture and hn_taken_square(board) == move.to as int
+    var x: [PremoveFeatures]f64
+    x[0] = 1.0
+    x[1] = recapture ? 1.0 : 0.0
+    x[2] = move.is_capture and not recapture ? 1.0 : 0.0
+    x[3] = min(log2(max(input.own_clock, 1) as f32) as f64, 6.0) - 6.0
+    x[4] = input.ply < 10 ? 1.0 : 0.0
+    x[5] = input.increment > 0 ? 1.0 : 0.0
+    x[6] = input.ply >= 3 and input.opp_think == 0 ? 1.0 : 0.0
+    x[7] = hn_game.premove_ply == input.ply - 2 ? 1.0 : 0.0
+    x[8] = input.speed <= 1 ? 1.0 : 0.0
+    x[9] = input.speed >= 3 ? 1.0 : 0.0
+    x[10] = (clamp(own_elo, 600, 2800) - 1500) as f64 / 500.0
+    var logit = 0.0
+    for f in 0..PremoveFeatures
+        logit += PremoveW[f] as f64 * x[f]
+    return 1.0 / (1.0 + exp(-logit))
+
+# Whether a move made at once (hn_draw_think) is played as a premove, with Human Premove on. The
+# game's first move never is: there is no move to wait for.
+fn hn_premoves(board: *Board, move: Move, input: *GlInput, own_elo: int, strength: *Strength) -> bool
+    if not hn_premove or input.ply < 1: return false
+    if hn_uniform(strength) >= hn_premove_chance(board, move, input, own_elo): return false
+    hn_game.premove_ply = input.ply
+    return true

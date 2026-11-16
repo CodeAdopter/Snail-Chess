@@ -26,7 +26,7 @@ extend Board
             else
                 let piece = piece_from_letter(symbol)
                 if piece == NoPiece or file < 0 or file > 7 or rank < 0 or rank > 7: return false
-                placement[Square(file, rank)] = piece
+                placement[Square.at(file, rank)] = piece
                 if piece == Piece.of(White, King): white_kings += 1
                 if piece == Piece.of(Black, King): black_kings += 1
                 file += 1
@@ -69,7 +69,7 @@ extend Board
         let rank = field[1] - '1'
         let white = side == White
         if file < 0 or file > 7 or rank != (white ? 5 : 2): return Square.none
-        let target = Square(file, rank)
+        let target = Square.at(file, rank)
         if squares[target] != NoPiece: return Square.none
         let victim = target + (white ? -8 : 8)
         if squares[victim] != Piece.of(side.other, Pawn): return Square.none

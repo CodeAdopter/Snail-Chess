@@ -1,0 +1,106 @@
+# Squares of a chess board.
+#
+# Square is a plain u8 with its own methods. The @inline methods fold at compile time when their
+# arguments are constants, so a Square costs what a hand-written integer costs.
+
+# A square numbered from 0 (a1) to 63 (h8), as file + 8 * rank. Adding an offset to a square
+# gives a square, and the difference of two squares is a plain integer.
+@ordinal
+type Square = u8
+    # The value that names no square. It prints as "-".
+    static fn none() -> Square
+        return 64
+
+    # The square on file 0..7 (a..h) and rank 0..7 (1..8).
+    @inline
+    static fn at(file: int, rank: int) -> Square
+        return (rank * 8 + file) as Square
+
+    @inline
+    fn file() -> int
+        return self & 7
+
+    @inline
+    fn rank() -> int
+        return self >> 3
+
+    # The square's name in algebraic notation, such as "e4".
+    @display
+    fn name() -> str
+        return SquareNames[self < 64 ? self : 64]
+
+const SquareNames = [
+    "a1", "b1", "c1", "d1", "e1", "f1", "g1", "h1",
+    "a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2",
+    "a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3",
+    "a4", "b4", "c4", "d4", "e4", "f4", "g4", "h4",
+    "a5", "b5", "c5", "d5", "e5", "f5", "g5", "h5",
+    "a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6",
+    "a7", "b7", "c7", "d7", "e7", "f7", "g7", "h7",
+    "a8", "b8", "c8", "d8", "e8", "f8", "g8", "h8",
+    "-"]
+
+const a1: Square = 0
+const b1: Square = 1
+const c1: Square = 2
+const d1: Square = 3
+const e1: Square = 4
+const f1: Square = 5
+const g1: Square = 6
+const h1: Square = 7
+const a2: Square = 8
+const b2: Square = 9
+const c2: Square = 10
+const d2: Square = 11
+const e2: Square = 12
+const f2: Square = 13
+const g2: Square = 14
+const h2: Square = 15
+const a3: Square = 16
+const b3: Square = 17
+const c3: Square = 18
+const d3: Square = 19
+const e3: Square = 20
+const f3: Square = 21
+const g3: Square = 22
+const h3: Square = 23
+const a4: Square = 24
+const b4: Square = 25
+const c4: Square = 26
+const d4: Square = 27
+const e4: Square = 28
+const f4: Square = 29
+const g4: Square = 30
+const h4: Square = 31
+const a5: Square = 32
+const b5: Square = 33
+const c5: Square = 34
+const d5: Square = 35
+const e5: Square = 36
+const f5: Square = 37
+const g5: Square = 38
+const h5: Square = 39
+const a6: Square = 40
+const b6: Square = 41
+const c6: Square = 42
+const d6: Square = 43
+const e6: Square = 44
+const f6: Square = 45
+const g6: Square = 46
+const h6: Square = 47
+const a7: Square = 48
+const b7: Square = 49
+const c7: Square = 50
+const d7: Square = 51
+const e7: Square = 52
+const f7: Square = 53
+const g7: Square = 54
+const h7: Square = 55
+const a8: Square = 56
+const b8: Square = 57
+const c8: Square = 58
+const d8: Square = 59
+const e8: Square = 60
+const f8: Square = 61
+const g8: Square = 62
+const h8: Square = 63

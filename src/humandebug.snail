@@ -1,0 +1,89 @@
+# Human Mode's debug commands (src/uci.snail: hninput, hncheck), for the tools that check the
+# engine against the training data.
+
+use human
+use humantime
+use timefeat
+use tnet
+
+# Debug: the inputs hn_input builds, printed for tools/human/engine_inputs.py.
+fn hn_print_input(board: *Board, own_elo: int, clocks: HumanClocks)
+    var input: GlInput
+    hn_input(board, &input, own_elo, clocks)
+    write("hninput codes ")
+    for i in 0..9 * 64
+        write("{input.codes[i]:x}")
+    print(" ep {input.ep} castling {input.castling} halfmove {input.halfmove} repeats {input.repeats} ply {input.ply} speed {input.speed} own_rating {input.own_rating} opp_rating {input.opp_rating} own_clock {input.own_clock} opp_clock {input.opp_clock} increment {input.increment}")
+
+# Debug (hncheck, for tools/human/check_fit.py): the strength check with exact scores, on the
+# net's policy without a think time and without Style. extra: one more move to score (the human's
+# move in the fit), or NoMove. Prints the engine's move, then each candidate's probability at
+# temperature 1 and score for the mover, then "hncheck end".
+fn hn_print_check(board: *Board, own_elo: int, clocks: HumanClocks, search: *Search, extra: Move)
+    var input: GlInput
+    hn_input(board, &input, own_elo, clocks)
+    gl_forward(&hn_net, hn_scratch, &input)
+    let count = legal_moves(board, &hn_moves[0])
+    if count == 0
+        print("hncheck end")
+        return
+    let flip = board.side == Black
+    var best = 0
+    for i in 0..count
+        let m = hn_moves[i]
+        let promotion = m.is_promotion ? m.promotion : NoKind
+        hn_logits[i] = hn_scratch.policy[gl_class(hn_frame(m.from as int, flip), hn_frame(m.to as int, flip), promotion)]
+        if hn_logits[i] > hn_logits[best]: best = i
+    var total = 0.0
+    for i in 0..count
+        total += exp((hn_logits[i] - hn_logits[best]) as f64)
+    var check: HumanCheck
+    check.max_loss = hn_check_loss(own_elo)
+    check.nodes_scale = hn_check_nodes_scale(own_elo)
+    hn_check_candidates(&check, count, HumanCheckMoves)
+    let net_count = check.count
+    if extra != NoMove
+        for i in 0..count
+            if hn_moves[i] == extra and not hn_check_has(&check, i) and check.count < HumanCheckSlots
+                check.index[check.count] = i
+                check.count += 1
+    search.human_check(board, &check, count, true)
+    let done = check.done ? 1 : 0
+    write("hncheck best ")
+    write_move(check.best)
+    let penalty = hn_check_penalty(own_elo)
+    print(" score {check.best_score} depth {check.depth} maxloss {check.max_loss:.3} penalty {penalty:.2} done {done} legal {count}")
+    for c in 0..check.count
+        let i = check.index[c]
+        let p = exp((hn_logits[i] - hn_logits[best]) as f64) / total
+        let from_net = c < net_count ? 1 : 0
+        let is_engine = c == check.engine ? 1 : 0
+        let is_extra = hn_moves[i] == extra ? 1 : 0
+        let judged = check.judged[c] ? 1 : 0
+        write("hncheck move ")
+        write_move(hn_moves[i])
+        print(" prob {p:.6} score {check.score[c]} net {from_net} engine {is_engine} human {is_extra} judged {judged}")
+    print("hncheck end")
+
+# Debug (hnrecord, for tools/human/engine_record.py): the training record the engine builds for
+# the think-time net, as hex, and with a think-time net loaded its 32 logits. move: the move about
+# to be played, or NoMove.
+fn hn_print_record(board: *Board, own_elo: int, clocks: HumanClocks, move: Move)
+    var input: GlInput
+    hn_input(board, &input, own_elo, clocks)
+    let count = legal_moves(board, &hn_moves[0])
+    let flip = board.side == Black
+    var target = GlNoClock
+    if move != NoMove: target = gl_class(hn_frame(move.from as int, flip), hn_frame(move.to as int, flip), move.is_promotion ? move.promotion : NoKind)
+    var record: [TfRecord]u8
+    hn_time_record(&input, &hn_moves[0], count, flip, target, &record[0])
+    write("hnrecord ")
+    for i in 0..TfRecord
+        write("{record[i] >> 4:x}{record[i] & 15:x}")
+    if hn_time_ready
+        var logits: [TnBins]f32
+        tn_logits(&hn_time_net, &record[0], &logits[0])
+        write(" logits")
+        for b in 0..TnBins
+            write(" {logits[b]:.4}")
+    print()

@@ -1,0 +1,580 @@
+# The think-time net's inputs (src/tnet.snail), from a position laid out as a training record
+# (tools/human/README.md, "Training positions"; src/humantime.snail builds one from the game).
+#
+# This is Ganglia's src/kernels/timefeat.snail, with what it reads of a record from its
+# records.snail and inputs.snail, every name given the prefix tf_ or Tf: the net was trained on
+# these numbers, so the two must stay the same, line for line. tools/human/timecheck compares
+# what this file computes with what Ganglia computes (its timedump) on the same records. The
+# policy group is left out: only a program that runs the full net has its numbers, and a net that
+# reads them is not one the engine loads.
+#
+# The inputs are TfDenseFeatures numbers, scaled to about -2 .. 2, and TfHotFeatures that are 0 or
+# 1. They come in groups, and a net is trained with any set of them (the others are left at 0):
+#
+#   clock    both clocks, the time control, both ratings, the move number, the kind of game
+#   pace     the mover's last two think times, the opponent's last, and both sides' average so far
+#   board    material, the number of legal moves and captures, check, pieces left hanging, the
+#            opponent's last move
+#   move     the move about to be played: its piece, what it takes, whether it retakes, checks,
+#            castles or promotes, and whether the piece can be taken where it lands
+#   squares  the piece on each square, 0 or 1 per piece and square
+#   last     the squares the opponent's last move left and reached
+#   target   the squares the move about to be played leaves and reaches
+#
+# Squares are in the mover's frame, as the records are: the mover's pawns move toward rank 8.
+
+const TfRecord = 512
+const TfNoClock = 0xFFFF
+const TfClasses = 4096 + 72       # from * 64 + to, then the underpromotions
+
+const TfAtFromSquares = 288
+const TfAtMoves = 304
+const TfAtSalience = 432
+const TfAtTarget = 440
+const TfAtEp = 442
+const TfAtCastling = 443
+const TfAtHalfmove = 444
+const TfAtRepeats = 445
+const TfAtSpeed = 446
+const TfAtKind = 447
+const TfAtResult = 448
+const TfAtOwnRating = 452
+const TfAtOppRating = 454
+const TfAtOwnClock = 456
+const TfAtOppClock = 458
+const TfAtOwnStart = 460
+const TfAtOppStart = 462
+const TfAtBase = 464
+const TfAtIncrement = 466
+const TfAtThink = 468
+const TfAtOppThink = 470
+const TfAtPly = 472
+
+fn tf_u16(r: *u8, at: int) -> int
+    return r[at] as int | (r[at + 1] as int) << 8
+
+fn tf_u64(r: *u8, at: int) -> u64
+    var v: u64 = 0
+    for i in 0..8
+        v |= (r[at + i] as u64) << (8 * i)
+    return v
+
+# The code (0-13) of square sq on board k (0 is the position itself).
+fn tf_code(r: *u8, k: int, sq: int) -> int
+    let byte = r[k * 32 + sq / 2] as int
+    return sq & 1 == 0 ? byte & 15 : byte >> 4
+
+# The squares the mover's piece on from can move to, 0 when it has none.
+fn tf_targets(r: *u8, from: int) -> u64
+    for s in 0..16
+        if r[TfAtFromSquares + s] as int == from: return tf_u64(r, TfAtMoves + 8 * s)
+    return 0
+
+# Underpromotion class 4096 + c, c = piece * 24 + file * 3 + direction: from rank 7 to rank 8 as
+# knight, bishop or rook (piece 0-2), straight ahead (direction 1) or capturing.
+fn tf_under_from(c: int) -> int
+    return 48 + (c / 3) % 8
+
+fn tf_under_to(c: int) -> int
+    return clamp(56 + (c / 3) % 8 + c % 3 - 1, 0, 63)
+
+# Berserk (net.Condition): 1 when the mover started below 3/4 of the base time, plus 2 when the
+# opponent did.
+fn tf_berserk(r: *u8) -> int
+    let base = tf_u16(r, TfAtBase) as f32
+    var b = 0
+    if (tf_u16(r, TfAtOwnStart) as f32) < 0.75 * base: b += 1
+    if (tf_u16(r, TfAtOppStart) as f32) < 0.75 * base: b += 2
+    return b
+
+fn tf_log2_think(seconds: int) -> f32
+    return log2(1.0 + min(seconds, 4000) as f32)
+
+const TfGroupClock = 1
+const TfGroupPace = 2
+const TfGroupBoard = 4
+const TfGroupMove = 8
+const TfGroupPolicy = 16
+const TfGroupSquares = 32
+const TfGroupLast = 64
+const TfGroupTarget = 128
+const TfAllGroups = 255
+
+const TfClockFeatures = 26
+const TfPaceFeatures = 12
+const TfBoardFeatures = 52
+const TfMoveFeatures = 27
+const TfPolicyFeatures = 3
+const TfAtPaceFeatures = TfClockFeatures
+const TfAtBoardFeatures = TfAtPaceFeatures + TfPaceFeatures
+const TfAtMoveFeatures = TfAtBoardFeatures + TfBoardFeatures
+const TfAtPolicyFeatures = TfAtMoveFeatures + TfMoveFeatures
+const TfDenseFeatures = TfAtPolicyFeatures + TfPolicyFeatures
+
+const TfHotSquares = 0            # square * 12 + piece code - 1
+const TfHotLast = 768             # the opponent's last move: 64 from-squares, then 64 to-squares
+const TfHotTarget = 896           # the move about to be played, the same
+const TfHotFeatures = 1024
+
+# Fields of a record that the full net does not read.
+const TfAtLegalMoves = 450        # u16 the number of legal moves
+const TfAtOwnThink1 = 500         # u16 the mover's think time on their last move, and the one before
+const TfAtOwnThink2 = 502
+
+fn tf_flag(on: bool) -> f32
+    return on ? 1.0 : 0.0
+
+# The kind of the piece with code c: 1 pawn, 2 knight, 3 bishop, 4 rook, 5 queen, 6 king; 0 for
+# an empty square.
+fn tf_kind(c: int) -> int
+    if c >= 1 and c <= 6: return c
+    if c >= 7 and c <= 12: return c - 6
+    return 0
+
+fn tf_value(kind: int) -> int
+    if kind == 1: return 1
+    if kind == 2 or kind == 3: return 3
+    if kind == 4: return 5
+    if kind == 5: return 9
+    if kind == 6: return 20
+    return 0
+
+# How many pieces of a side attack square t on board b (64 codes), and the value of the least
+# valuable of them, 99 when none does. side is 0 for the mover's pieces (codes 1-6) and 1 for the
+# opponent's (7-12).
+fn tf_attackers(b: *u8, t: int, side: int) -> (int, int)
+    let first = side * 6
+    let tf = t & 7
+    let tr = t >> 3
+    var n = 0
+    var least = 99
+    # Pawns: the mover's capture toward rank 8, the opponent's toward rank 1.
+    let pr = side == 0 ? tr - 1 : tr + 1
+    if pr >= 0 and pr < 8
+        if tf > 0 and b[pr * 8 + tf - 1] as int == first + 1
+            n += 1
+            least = 1
+        if tf < 7 and b[pr * 8 + tf + 1] as int == first + 1
+            n += 1
+            least = 1
+    for i in 0..8
+        let a = i & 1 == 0 ? 1 : 2
+        let f = tf + (i & 2 != 0 ? -a : a)
+        let r = tr + (i & 4 != 0 ? a - 3 : 3 - a)
+        if f >= 0 and f < 8 and r >= 0 and r < 8 and b[r * 8 + f] as int == first + 2
+            n += 1
+            least = min(least, 3)
+    for i in 0..9
+        let df = i % 3 - 1
+        let dr = i / 3 - 1
+        if df == 0 and dr == 0: continue
+        var f = tf + df
+        var r = tr + dr
+        var steps = 0
+        while f >= 0 and f < 8 and r >= 0 and r < 8
+            let c = b[r * 8 + f] as int
+            if c != 0
+                let kind = c - first
+                if kind >= 1 and kind <= 6
+                    let diagonal = df != 0 and dr != 0
+                    if kind == 5 or (diagonal and kind == 3) or (not diagonal and kind == 4) or (kind == 6 and steps == 0)
+                        n += 1
+                        least = min(least, tf_value(kind))
+                break
+            f += df
+            r += dr
+            steps += 1
+    return n, least
+
+# Whether the piece on square `from` of board b attacks square t.
+fn tf_piece_attacks(b: *u8, from: int, t: int) -> bool
+    let c = b[from] as int
+    let kind = tf_kind(c)
+    if kind == 0 or from == t: return false
+    let df = (t & 7) - (from & 7)
+    let dr = (t >> 3) - (from >> 3)
+    if kind == 1: return abs(df) == 1 and dr == (c <= 6 ? 1 : -1)
+    if kind == 2: return (abs(df) == 1 and abs(dr) == 2) or (abs(df) == 2 and abs(dr) == 1)
+    if kind == 6: return max(abs(df), abs(dr)) == 1
+    let straight = df == 0 or dr == 0
+    let diagonal = abs(df) == abs(dr)
+    if not ((straight and kind != 3) or (diagonal and kind != 4)): return false
+    let sf = df > 0 ? 1 : df < 0 ? -1 : 0
+    let sr = dr > 0 ? 1 : dr < 0 ? -1 : 0
+    var sq = from + sr * 8 + sf
+    while sq != t
+        if b[sq] != 0: return false
+        sq += sr * 8 + sf
+    return true
+
+# Whether the piece on square sq of board b can be taken at a loss: a piece of the other side
+# attacks it, and none of its own side defends it or the least attacker is worth less than it.
+fn tf_hangs(b: *u8, sq: int) -> bool
+    let c = b[sq] as int
+    if c == 0: return false
+    let side = c <= 6 ? 0 : 1
+    let (hits, least) = tf_attackers(b, sq, 1 - side)
+    if hits == 0: return false
+    let (guards, _) = tf_attackers(b, sq, side)
+    return guards == 0 or least < tf_value(tf_kind(c))
+
+# The opponent's last move, from the boards before (b1) and after it (b0): the squares it left and
+# reached, the kind of the piece now there, and the kind of the mover's piece it took (0 for none).
+# Castling counts as the king's move.
+fn tf_last_move(b1: *u8, b0: *u8) -> (int, int, int, int)
+    var from = -1
+    var to = -1
+    var kind = 0
+    var taken = 0
+    for sq in 0..64
+        let was = b1[sq] as int
+        let now = b0[sq] as int
+        if was == now: continue
+        if now >= 7 and now <= 12 and (to < 0 or now == 12)
+            to = sq
+            kind = now - 6
+        if was >= 7 and was <= 12 and now == 0 and (from < 0 or was == 12): from = sq
+        if was >= 1 and was <= 6: taken = was
+    return from, to, kind, taken
+
+# The square the mover's own last move reached, from the boards before (b2) and after it (b1); -1
+# when there is none.
+fn tf_own_last_to(b2: *u8, b1: *u8) -> int
+    var to = -1
+    for sq in 0..64
+        let now = b1[sq] as int
+        if now >= 1 and now <= 6 and b2[sq] as int != now and (to < 0 or now == 6): to = sq
+    return to
+
+fn tf_square_of(b: *u8, code: int) -> int
+    for sq in 0..64
+        if b[sq] as int == code: return sq
+    return -1
+
+# The board after the mover's piece on `from` moves to `to`, from the board b before it: a pawn
+# that takes onto an empty square takes en passant, a king that moves two files castles, and a
+# pawn reaching rank 8 becomes `promoted` (a kind, 5 for a queen when 0 is given).
+fn tf_play_move(b: *u8, from: int, to: int, promoted: int, after: *u8)
+    for sq in 0..64
+        after[sq] = b[sq]
+    let code = b[from] as int
+    var lands = code
+    if code == 1
+        if (from & 7) != (to & 7) and b[to] == 0: after[to - 8] = 0
+        if to >= 56: lands = promoted != 0 ? promoted : 5
+    if code == 6 and abs((to & 7) - (from & 7)) == 2
+        let rank = from & 56
+        if (to & 7) > (from & 7)
+            after[rank + 7] = 0
+            after[to - 1] = 4
+        else
+            after[rank] = 0
+            after[to + 1] = 4
+    after[from] = 0
+    after[to] = lands as u8
+
+# How many pieces of a side (0 the mover's, 1 the opponent's) other than its king hang on board b,
+# at most 3.
+fn tf_hanging_count(b: *u8, side: int) -> int
+    var n = 0
+    for sq in 0..64
+        let c = b[sq] as int
+        if c == 0 or c == 6 or c == 12 or (c <= 6) != (side == 0): continue
+        if tf_hangs(b, sq): n += 1
+    return min(n, 3)
+
+# What the board group finds that the move group and the squares also use.
+struct TfFacts
+    last_from: int = -1         # the opponent's last move, -1 when unknown
+    last_to: int = -1
+    last_took: bool
+    best_victim: int            # the value of the most valuable piece the mover can take
+
+fn tf_clock(r: *u8, d: *f32)
+    let own = tf_u16(r, TfAtOwnClock) as f32
+    let opp = tf_u16(r, TfAtOppClock) as f32
+    let base = tf_u16(r, TfAtBase)
+    let inc = tf_u16(r, TfAtIncrement)
+    let ply = tf_u16(r, TfAtPly)
+    let own_rating = tf_u16(r, TfAtOwnRating) as f32
+    let opp_rating = tf_u16(r, TfAtOppRating) as f32
+    d[0] = log2(max(own, 1.0)) / 8.0
+    d[1] = log2(max(opp, 1.0)) / 8.0
+    d[2] = min(own / max(tf_u16(r, TfAtOwnStart), 1) as f32, 2.0)
+    d[3] = min(opp / max(tf_u16(r, TfAtOppStart), 1) as f32, 2.0)
+    d[4] = clamp(log2(max(own, 1.0) / max(opp, 1.0)), -4.0, 4.0) / 2.0
+    d[5] = log2(base as f32 + 1.0) / 8.0
+    d[6] = log2(inc as f32 + 1.0) / 4.0
+    d[7] = tf_flag(inc == 0)
+    d[8] = log2((base + 40 * inc) as f32 + 1.0) / 8.0
+    d[9] = (own_rating - 1500.0) / 500.0
+    d[10] = clamp((opp_rating - own_rating) / 200.0, -3.0, 3.0)
+    d[11] = log2(1.0 + ply as f32) / 6.0
+    d[12] = min(ply, 200) as f32 / 100.0
+    d[13 + min(r[TfAtKind] as int, 3)] = 1.0
+    let berserk = tf_berserk(r)
+    d[17] = tf_flag(berserk & 1 != 0)
+    d[18] = tf_flag(berserk & 2 != 0)
+    let speed = r[TfAtSpeed] as int
+    d[19 + clamp(speed - 1, 0, 3)] = 1.0
+    d[23] = min(own, 10.0) / 10.0
+    d[24] = min(own, 30.0) / 30.0
+    d[25] = log2(1.0 + own / max(40 - ply / 2, 10) as f32) / 6.0
+
+fn tf_pace(r: *u8, d: *f32)
+    let t1 = tf_u16(r, TfAtOwnThink1)
+    let t2 = tf_u16(r, TfAtOwnThink2)
+    let ot = tf_u16(r, TfAtOppThink)
+    if t1 != TfNoClock
+        d[0] = tf_log2_think(t1) / 6.0
+        d[1] = 1.0
+    if t2 != TfNoClock
+        d[2] = tf_log2_think(t2) / 6.0
+        d[3] = 1.0
+    if ot != TfNoClock
+        d[4] = tf_log2_think(ot) / 6.0
+        d[5] = 1.0
+    d[6] = tf_flag(t1 == 0)
+    d[7] = tf_flag(t2 == 0)
+    d[8] = tf_flag(ot == 0)
+    # The seconds each side has spent per move so far: what left its clock, plus the increments.
+    let ply = tf_u16(r, TfAtPly)
+    let inc = tf_u16(r, TfAtIncrement)
+    let own_moves = ply / 2
+    let opp_moves = (ply + 1) / 2
+    let own_spent = max(tf_u16(r, TfAtOwnStart) - tf_u16(r, TfAtOwnClock) + inc * own_moves, 0) as f32
+    let opp_spent = max(tf_u16(r, TfAtOppStart) - tf_u16(r, TfAtOppClock) + inc * opp_moves, 0) as f32
+    let own_average = own_spent / max(own_moves, 1) as f32
+    d[9] = log2(1.0 + own_average) / 6.0
+    d[10] = log2(1.0 + opp_spent / max(opp_moves, 1) as f32) / 6.0
+    if t1 != TfNoClock: d[11] = clamp(log2((1.0 + min(t1, 4000) as f32) / (1.0 + own_average)), -4.0, 4.0) / 2.0
+
+# The board group. b0 is the position and b1 the one before it, with the one before that after it.
+fn tf_board(r: *u8, b0: *u8, b1: *u8, d: *f32, facts: *TfFacts)
+    var own_material = 0
+    var opp_material = 0
+    var pieces = 0
+    var theirs: u64 = 0
+    var own_hanging = 0
+    var own_hanging_most = 0
+    var opp_hanging = 0
+    var opp_hanging_most = 0
+    for sq in 0..64
+        let c = b0[sq] as int
+        let kind = tf_kind(c)
+        if kind == 0 or kind == 6: continue
+        let value = tf_value(kind)
+        let scale: f32 = kind == 1 ? 0.125 : kind == 5 ? 1.0 : 0.5
+        if c <= 6
+            d[kind - 1] += scale
+            own_material += value
+            if tf_hangs(b0, sq)
+                own_hanging += 1
+                own_hanging_most = max(own_hanging_most, value)
+        else
+            d[4 + kind] += scale
+            opp_material += value
+            theirs |= 1 as u64 << sq
+            if tf_hangs(b0, sq)
+                opp_hanging += 1
+                opp_hanging_most = max(opp_hanging_most, value)
+        if kind != 1: pieces += value
+    d[10] = own_material as f32 / 39.0
+    d[11] = opp_material as f32 / 39.0
+    d[12] = clamp(own_material - opp_material, -10, 10) as f32 / 5.0
+    d[13] = pieces as f32 / 62.0
+
+    let legal = tf_u16(r, TfAtLegalMoves)
+    d[14] = min(legal, 60) as f32 / 40.0
+    d[15] = log2(1.0 + legal as f32) / 6.0
+    d[16] = tf_flag(legal == 1)
+    d[17] = tf_flag(legal == 2)
+    d[18] = tf_flag(legal <= 4)
+
+    # Captures: the legal moves onto the opponent's pieces, and a pawn's onto the en passant square.
+    var captures = 0
+    var best_victim = 0
+    var best_gain = -20
+    var checking = 0
+    let ep = r[TfAtEp] as int
+    let their_king = tf_square_of(b0, 12)
+    var after: [64]u8 = undefined
+    for s in 0..16
+        let from = r[TfAtFromSquares + s] as int
+        if from >= 64: continue
+        let mover = tf_value(tf_kind(b0[from] as int))
+        let moves = tf_u64(r, TfAtMoves + 8 * s)
+        # The moves that give check, a promotion counted once, as a queen's.
+        var left = moves
+        while left != 0 and their_king >= 0
+            tf_play_move(b0, from, left.first, 0, &after[0])
+            let (hits, _) = tf_attackers(&after[0], their_king, 0)
+            if hits > 0: checking += 1
+            left &= left - 1
+        var taking = moves & theirs
+        while taking != 0
+            let victim = tf_value(tf_kind(b0[taking.first] as int))
+            captures += 1
+            best_victim = max(best_victim, victim)
+            best_gain = max(best_gain, victim - mover)
+            taking &= taking - 1
+        if ep < 64 and b0[from] as int == 1 and (moves >> ep) & 1 != 0
+            captures += 1
+            best_victim = max(best_victim, 1)
+            best_gain = max(best_gain, 0)
+    d[19] = min(captures, 8) as f32 / 4.0
+    d[20] = tf_flag(captures > 0)
+    d[21] = best_victim as f32 / 9.0
+    d[22] = tf_flag(best_gain > 0)
+    d[23] = captures > 0 ? clamp(best_gain, -9, 9) as f32 / 9.0 : 0.0
+
+    let king = tf_square_of(b0, 6)
+    var checks = 0
+    if king >= 0
+        let (n, _) = tf_attackers(b0, king, 1)
+        checks = n
+    d[24] = tf_flag(checks > 0)
+    d[25] = min(r[TfAtHalfmove] as int, 50) as f32 / 50.0
+    d[26] = tf_flag(r[TfAtRepeats] >= 1)
+    d[27] = tf_flag(r[TfAtRepeats] >= 2)
+    let rights = r[TfAtCastling] as int
+    for i in 0..4
+        d[28 + i] = tf_flag((rights >> i) & 1 != 0)
+    d[32] = min(own_hanging, 3) as f32 / 3.0
+    d[33] = own_hanging_most as f32 / 9.0
+    d[34] = min(opp_hanging, 3) as f32 / 3.0
+    d[35] = opp_hanging_most as f32 / 9.0
+
+    facts.best_victim = best_victim
+    let ply = tf_u16(r, TfAtPly)
+    if ply >= 1
+        let (from, to, kind, taken) = tf_last_move(b1, b0)
+        facts.last_from = from
+        facts.last_to = to
+        facts.last_took = taken != 0
+        d[36] = tf_flag(taken != 0)
+        d[37] = tf_value(taken) as f32 / 9.0
+        if kind >= 1: d[37 + kind] = 1.0
+        if to >= 0
+            # Whether the piece that just moved can be taken, and at a gain; and the most valuable
+            # of the mover's pieces it attacks that hang.
+            let (takers, _) = tf_attackers(b0, to, 0)
+            d[44] = tf_flag(takers > 0)
+            d[45] = tf_flag(tf_hangs(b0, to))
+            var threatened = 0
+            for sq in 0..64
+                let c = b0[sq] as int
+                if c >= 1 and c <= 5 and tf_piece_attacks(b0, to, sq) and tf_hangs(b0, sq): threatened = max(threatened, tf_value(c))
+            d[46] = tf_flag(threatened > 0)
+            d[47] = threatened as f32 / 9.0
+    if ply >= 2
+        # The mover's own last move: whether it took a piece, and whether the piece it moved was
+        # then taken where it landed.
+        var before = 0
+        var now = 0
+        for sq in 0..64
+            if b1[64 + sq] >= 7 and b1[64 + sq] <= 12: before += 1
+            if b1[sq] >= 7 and b1[sq] <= 12: now += 1
+        d[48] = tf_flag(now < before)
+        d[49] = tf_flag(facts.last_took and facts.last_to == tf_own_last_to(b1 + 64, b1))
+    d[50] = min(checking, 4) as f32 / 4.0
+    d[51] = tf_flag(checking > 0)
+
+# The move group for the move about to be played, and the squares it leaves and reaches (-1 when
+# the record has no move).
+fn tf_move(r: *u8, b0: *u8, b1: *u8, facts: *TfFacts, d: *f32) -> (int, int)
+    let cls = tf_u16(r, TfAtTarget)
+    if cls >= TfClasses: return -1, -1
+    var from = cls / 64
+    var to = cls % 64
+    var promoted = 0
+    if cls >= 4096
+        let c = cls - 4096
+        from = tf_under_from(c)
+        to = tf_under_to(c)
+        promoted = 2 + c / 24
+    let code = b0[from] as int
+    let kind = tf_kind(code)
+    if code < 1 or code > 6: return -1, -1
+    if kind == 1 and to >= 56 and promoted == 0: promoted = 5
+    var after: [64]u8 = undefined
+    tf_play_move(b0, from, to, promoted, &after[0])
+    var victim = tf_kind(b0[to] as int)
+    var victim_hung = victim != 0 and tf_hangs(b0, to)
+    if kind == 1 and (from & 7) != (to & 7) and victim == 0
+        victim = 1
+        victim_hung = tf_hangs(b0, to - 8)
+    let last_to = facts.last_to
+    let last_took = facts.last_took
+
+    d[kind - 1] = 1.0
+    d[6] = tf_flag(victim != 0)
+    d[7] = tf_value(victim) as f32 / 9.0
+    d[8] = victim != 0 ? clamp(tf_value(victim) - tf_value(kind), -9, 9) as f32 / 9.0 : 0.0
+    d[9] = tf_flag(victim != 0 and last_took and to == last_to)
+    d[10] = tf_flag(to == last_to)
+    d[11] = tf_flag(promoted != 0)
+    d[12] = tf_flag(kind == 6 and abs((to & 7) - (from & 7)) == 2)
+    let their_king = tf_square_of(&after[0], 12)
+    if their_king >= 0
+        let (checks, _) = tf_attackers(&after[0], their_king, 0)
+        d[13] = tf_flag(checks > 0)
+    let (hits, least) = tf_attackers(&after[0], to, 1)
+    let (guards, _) = tf_attackers(&after[0], to, 0)
+    let landed = tf_value(tf_kind(after[to] as int))
+    d[14] = tf_flag(hits > 0)
+    d[15] = tf_flag(guards > 0)
+    d[16] = tf_flag(hits > 0 and (guards == 0 or least < landed))
+    let (chased, _) = tf_attackers(b0, from, 1)
+    d[17] = tf_flag(chased > 0)
+    d[18] = tf_flag(tf_u16(r, TfAtPly) >= 2 and tf_own_last_to(b1 + 64, b1) == from)
+    d[19] = tf_flag((to >> 3) < (from >> 3))
+    d[20] = max(abs((to & 7) - (from & 7)), abs((to >> 3) - (from >> 3))) as f32 / 7.0
+    d[21] = min(tf_targets(r, from).count, 14) as f32 / 14.0
+    d[22] = tf_flag(victim != 0 and tf_value(victim) == facts.best_victim)
+    d[23] = tf_flag(victim_hung)
+    d[24] = tf_flag(kind != 6 and tf_hangs(b0, from))
+    d[25] = tf_hanging_count(&after[0], 0) as f32 / 3.0
+    d[26] = tf_hanging_count(&after[0], 1) as f32 / 3.0
+    return from, to
+
+# A row's inputs: dense[TfDenseFeatures] and hot[TfHotFeatures], with the groups not in `groups` left
+# at 0.
+fn tf_features(row: *u8, groups: int, dense: *f32, hot: *f32)
+    for i in 0..TfDenseFeatures
+        dense[i] = 0.0
+    for i in 0..TfHotFeatures
+        hot[i] = 0.0
+    if groups & TfGroupClock != 0: tf_clock(row, dense)
+    if groups & TfGroupPace != 0: tf_pace(row, dense + TfAtPaceFeatures)
+    if groups & (TfGroupBoard | TfGroupMove | TfGroupSquares | TfGroupLast | TfGroupTarget) == 0
+        return
+    # The position, and the two before it: boards[k * 64 + sq].
+    var boards: [192]u8 = undefined
+    for k in 0..3
+        for sq in 0..64
+            boards[k * 64 + sq] = tf_code(row, k, sq) as u8
+    let b0 = &boards[0]
+    let b1 = &boards[64]
+    var scratch: [TfBoardFeatures]f32
+    var facts: TfFacts
+    tf_board(row, b0, b1, groups & TfGroupBoard != 0 ? dense + TfAtBoardFeatures : &scratch[0], &facts)
+    let last_from = facts.last_from
+    let last_to = facts.last_to
+    var scratch2: [TfMoveFeatures]f32
+    var from = -1
+    var to = -1
+    if groups & (TfGroupMove | TfGroupTarget) != 0
+        let (f, t) = tf_move(row, b0, b1, &facts, groups & TfGroupMove != 0 ? dense + TfAtMoveFeatures : &scratch2[0])
+        from = f
+        to = t
+    if groups & TfGroupSquares != 0
+        for sq in 0..64
+            let c = b0[sq] as int
+            if c >= 1 and c <= 12: hot[TfHotSquares + sq * 12 + c - 1] = 1.0
+    if groups & TfGroupLast != 0
+        if last_from >= 0: hot[TfHotLast + last_from] = 1.0
+        if last_to >= 0: hot[TfHotLast + 64 + last_to] = 1.0
+    if groups & TfGroupTarget != 0
+        if from >= 0: hot[TfHotTarget + from] = 1.0
+        if to >= 0: hot[TfHotTarget + 64 + to] = 1.0
